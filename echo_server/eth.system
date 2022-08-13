@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<system>
+    <memory_region name="uart" size="0x10_000" phys_addr="0x30890000" />
+    <memory_region name="eth0" size="0x10_000" phys_addr="0x30be0000" />
+
+    <memory_region name="timer" size="0x10_000" phys_addr="0x302d0000" />
+    <memory_region name="hw_ring_buffer" size="0x1_000" />
+    <memory_region name="shared_dma" size="0x200_000" page_size="0x200_000" />
+
+    <!-- shared memory for ring buffer mechanism -->
+    <memory_region name="rx_avail" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="rx_used" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="tx_avail" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="tx_used" size="0x200_000" page_size="0x200_000"/>
+
+    <memory_region name="rx_cookies" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="tx_cookies" size="0x200_000" page_size="0x200_000"/>
+
+    <memory_region name="data_packet" size="0x1000"/>
+
+    <memory_region name="cyclecounters" size="0x1000"/>
+
+    <protection_domain name="eth" priority="101" budget="160" period="300" pp="true">
+        <program_image path="eth.elf" />
+        <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
+
+        <map mr="hw_ring_buffer" vaddr="0x3_000_000" perms="rw" cached="false" setvar_vaddr="hw_ring_buffer_vaddr" />
+
+        <map mr="rx_cookies" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="rx_cookies" />
+        <map mr="tx_cookies" vaddr="0x3_600_000" perms="rw" cached="true" setvar_vaddr="tx_cookies" />
+
+        <!-- shared memory for ring buffer mechanism -->
+        <map mr="rx_avail" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_avail" />
+        <map mr="rx_used" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
+        <map mr="tx_avail" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail" />
+        <map mr="tx_used" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
+
+        <map mr="shared_dma" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
+
+        <irq irq="152" id="1" /> <!-- ethernet interrupt -->
+
+        <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+        <!-- we need physical addresses of hw rings and dma region -->
+        <setvar symbol="hw_ring_buffer_paddr" region_paddr="hw_ring_buffer" />
+        <setvar symbol="shared_dma_paddr" region_paddr="shared_dma" />
+    </protection_domain>
+
+    <protection_domain name="lwip" priority="100" budget="20000">
+        <program_image path="lwip.elf" />
+
+        <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
+        <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+        <!-- shared memory for ring buffer mechanism -->
+        <map mr="rx_avail" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_avail" />
+        <map mr="rx_used" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
+        <map mr="tx_avail" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail" />
+        <map mr="tx_used" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
+
+        <map mr="shared_dma" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
+
+        <map mr="data_packet" vaddr="0x5_011_000" perms="rw" cached="true" setvar_vaddr="data_packet" />
+
+        <!-- shared memory used for benchmarking -->
+        <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+
+        <irq irq="87" id="1" /> <!-- timer interrupt -->
+    </protection_domain>
+
+    <protection_domain name="benchIdle" priority="1">
+        <program_image path="idle.elf" />
+        <!-- benchmark.c puts PMU data in here for lwip to collect -->
+        <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+    </protection_domain>
+
+    <protection_domain name="bench" priority="102">
+        <program_image path="benchmark.elf" />
+        <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+    </protection_domain>
+
+    <channel>
+        <end pd="eth" id="2" />
+        <end pd="lwip" id="2" />
+    </channel>
+
+    <channel>
+        <end pd="lwip" id="4" />
+        <end pd="eth" id="4" />
+    </channel>
+
+    <channel>
+        <end pd="lwip" id="3" />
+        <end pd="bench" id="1" />
+    </channel>
+
+    <channel>
+        <end pd="lwip" id="5" />
+        <end pd="bench" id="2" />
+    </channel>
+
+    <channel>
+        <end pd="benchIdle" id="3" />
+        <end pd="bench" id="3" />
+    </channel>
+
+</system>
