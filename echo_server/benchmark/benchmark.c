@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <sel4cp.h>
 #include <sel4/sel4.h>
-#include <sel4/benchmark_track_types.h>
+#include <sel4/benchmark_utilisation_types.h>
 #include "sel4bench.h"
 #include "fence.h"
 #include "bench.h"
