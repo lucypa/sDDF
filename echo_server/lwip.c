@@ -22,9 +22,9 @@
 #include "timer.h"
 
 #define IRQ    1
-#define TX_CH  2
 #define RX_CH  2
-#define INIT   4
+#define TX_CH  3
+#define INIT   6
 
 #define LINK_SPEED 1000000000 // Gigabit
 #define ETHER_MTU 1500
@@ -73,6 +73,8 @@ typedef struct state {
 } state_t;
 
 state_t state;
+uint64_t incoming = 0;
+uint64_t outgoing = 0;
 
 /* LWIP mempool declare literally just initialises an array big enough with the correct alignment */
 typedef struct lwip_custom_pbuf {
@@ -86,6 +88,20 @@ LWIP_MEMPOOL_DECLARE(
     sizeof(lwip_custom_pbuf_t),
     "Zero-copy RX pool"
 );
+
+static void
+dump_mac(uint8_t *mac)
+{
+    sel4cp_dbg_puts("Lwip MAC: ");
+    for (unsigned i = 0; i < 6; i++) {
+        sel4cp_dbg_putc(hexchar((mac[i] >> 4) & 0xf));
+        sel4cp_dbg_putc(hexchar(mac[i] & 0xf));
+        if (i < 5) {
+            sel4cp_dbg_putc(':');
+        }
+    }
+    sel4cp_dbg_putc('\n');
+}
 
 static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
 {
@@ -158,9 +174,19 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
     unsigned int len;
     ethernet_buffer_t *buffer;
 
+    if (ring_empty(state->tx_ring.avail_ring)) {
+        print("TX available ring is empty!\n");
+        return NULL;
+    }
+
     dequeue_avail(&state->tx_ring, &addr, &len, (void **)&buffer);
     if (!buffer) {
         print("lwip: dequeued a null ethernet buffer\n");
+        return NULL;
+    }
+
+    if (addr != buffer->buffer) {
+        print("sanity check failed\n");
     }
 
     return buffer;
@@ -168,11 +194,13 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
 
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
+    outgoing++;
     /* Grab an available TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     err_t ret = ERR_OK;
 
     if (p->tot_len > BUF_SIZE) {
+        print("lwip_eth_send total length > BUF SIZE\n");
         return ERR_MEM;
     }
 
@@ -214,13 +242,14 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
     signal = (BASE_OUTPUT_NOTIFICATION_CAP + TX_CH);
     /* NOTE: If driver is passive, we want to Call instead. */
-
+    //sel4cp_notify(TX_CH);
     return ret;
 }
 
 void process_rx_queue(void) 
 {
     while(!ring_empty(state.rx_ring.used_ring)) {
+        incoming++;
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -290,7 +319,7 @@ static void netif_status_callback(struct netif *netif)
 
 static void get_mac(void)
 {
-    sel4cp_ppcall(INIT, sel4cp_msginfo_new(0, 0));
+    sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
     state.mac[0] = palr >> 24;
@@ -303,6 +332,7 @@ static void get_mac(void)
 
 void init_post(void)
 {   
+    dump_mac(state.mac);
     netif_set_status_callback(&(state.netif), netif_status_callback);
     netif_set_up(&(state.netif));
 
@@ -377,7 +407,7 @@ void init(void)
 
     netif_set_default(&(state.netif));
 
-    sel4cp_notify(INIT);
+    sel4cp_notify(RX_CH);
 }
 
 void notified(sel4cp_channel ch)
@@ -394,6 +424,12 @@ void notified(sel4cp_channel ch)
             irq(ch);
             sel4cp_irq_ack(ch);
             return;
+        case TX_CH:
+            print("Lwip incoming: ");
+            puthex64(incoming);
+            print("\nLwip outgoing: ");
+            puthex64(outgoing);
+            print("\n");
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
             break;

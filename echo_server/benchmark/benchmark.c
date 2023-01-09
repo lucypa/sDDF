@@ -7,6 +7,7 @@
 #include <sel4cp.h>
 #include <sel4/sel4.h>
 #include <sel4/benchmark_track_types.h>
+#include <sel4/benchmark_utilisation_types.h>
 #include "sel4bench.h"
 #include "fence.h"
 #include "bench.h"
@@ -25,8 +26,6 @@
 
 uintptr_t uart_base;
 uintptr_t cyclecounters_vaddr;
-
-struct bench *b = (void *)(uintptr_t)0x5010000;
 
 ccnt_t counter_values[8];
 counter_bitfield_t benchmark_bf;
@@ -58,7 +57,7 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetLog(); 
+    seL4_BenchmarkResetLog();
 }
 
 static void
@@ -153,12 +152,6 @@ void notified(sel4cp_channel ch)
             sel4bench_get_counters(benchmark_bf, &counter_values[0]);
             sel4bench_stop_counters(benchmark_bf);
 
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
-            uint64_t total;
-            uint64_t kernel;
-            uint64_t entries;
-            uint64_t idle;
-            sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             /* Dump the counters */
             print("{\n");
             for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
@@ -167,6 +160,13 @@ void notified(sel4cp_channel ch)
                 puthex64(counter_values[i]);
                 print("\n");
             }
+
+            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
+            uint64_t total;
+            uint64_t kernel;
+            uint64_t entries;
+            uint64_t idle;
+            sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
 
             print("KernelUtilisation");
             print(": ");

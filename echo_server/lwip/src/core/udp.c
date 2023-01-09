@@ -62,7 +62,7 @@
 #include "lwip/stats.h"
 #include "lwip/snmp.h"
 #include "lwip/dhcp.h"
-
+#include "util.h"
 #include <string.h>
 
 #ifndef UDP_LOCAL_PORT_RANGE_START
@@ -216,6 +216,7 @@ udp_input(struct pbuf *p, struct netif *inp)
     /* drop short packets */
     LWIP_DEBUGF(UDP_DEBUG,
                 ("udp_input: short UDP datagram (%"U16_F" bytes) discarded\n", p->tot_len));
+    print("udp_input: short UDP datagram\n")
     UDP_STATS_INC(udp.lenerr);
     UDP_STATS_INC(udp.drop);
     MIB2_STATS_INC(mib2.udpinerrors);
@@ -434,6 +435,7 @@ end:
 chkerr:
   LWIP_DEBUGF(UDP_DEBUG | LWIP_DBG_LEVEL_SERIOUS,
               ("udp_input: UDP (or UDP Lite) datagram discarded due to failing checksum\n"));
+  print("udp_input: failing checksum\n");
   UDP_STATS_INC(udp.chkerr);
   UDP_STATS_INC(udp.drop);
   MIB2_STATS_INC(mib2.udpinerrors);

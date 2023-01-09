@@ -11,10 +11,10 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 
-#define IRQ_CH 1
-#define TX_CH  2
+#define IRQ_CH 0
+#define TX_CH  1
 #define RX_CH  2
-#define INIT   4
+#define INIT   3
 
 #define MDC_FREQ    20000000UL
 
@@ -93,12 +93,13 @@ static void
 dump_mac(uint8_t *mac)
 {
     for (unsigned i = 0; i < 6; i++) {
-        sel4cp_dbg_putc(hexchar((mac[i] >> 4) & 0xf));
-        sel4cp_dbg_putc(hexchar(mac[i] & 0xf));
+        putC(hexchar((mac[i] >> 4) & 0xf));
+        putC(hexchar(mac[i] & 0xf));
         if (i < 5) {
-            sel4cp_dbg_putc(':');
+            putC(':');
         }
     }
+    putC('\n');
 }
 
 static uintptr_t 
@@ -457,7 +458,7 @@ eth_setup(void)
     /* Size of max eth packet size */
     eth->mrbr = MAX_PACKET_SIZE;
 
-    eth->rcr = RCR_MAX_FL(1518) | RCR_RGMII_EN | RCR_MII_MODE;
+    eth->rcr = RCR_MAX_FL(1518) | RCR_RGMII_EN | RCR_MII_MODE;// | RCR_PROMISCUOUS;
     eth->tcr = TCR_FDEN;
 
     /* set speed */
@@ -530,7 +531,7 @@ void notified(sel4cp_channel ch)
             signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
             signal = (BASE_IRQ_CAP + IRQ_CH);
             return;
-        case INIT:
+        case RX_CH:
             init_post();
             break;
         case TX_CH:
@@ -538,6 +539,7 @@ void notified(sel4cp_channel ch)
             break;
         default:
             sel4cp_dbg_puts("eth driver: received notification on unexpected channel\n");
+            puthex64(ch);
             break;
     }
 }

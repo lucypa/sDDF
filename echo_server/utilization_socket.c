@@ -19,8 +19,9 @@
 
 #include "echo.h"
 #include "bench.h"
+#include "util.h"
 
-#define START_PMU 3
+#define START_PMU 4
 #define STOP_PMU 5
 
 /* This file implements a TCP based utilization measurment process that starts
@@ -153,6 +154,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         idle_overflow_start = bench->overflows;
 
         sel4cp_notify(START_PMU);
+        sel4cp_notify(7);
 
     } else if (msg_match(data_packet, STOP)) {        
         print("measurement finished \n");;
@@ -187,6 +189,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         tcp_shutdown(pcb, 0, 1);
         
         sel4cp_notify(STOP_PMU);
+        sel4cp_notify(7);
     } else if (msg_match(data_packet, QUIT)) {
         /* Do nothing for now */
     } else {
@@ -204,10 +207,10 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
 
 static err_t utilization_accept_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
 {
-    sel4cp_dbg_puts("Utilization connection established!\n");
+    print("Utilization connection established!\n");
     err_t error = tcp_write(newpcb, WHOAMI, strlen(WHOAMI), TCP_WRITE_FLAG_COPY);
     if (error) {
-        sel4cp_dbg_puts("Failed to send WHOAMI message through utilization peer");
+        print("Failed to send WHOAMI message through utilization peer\n");
     }
     tcp_sent(newpcb, utilization_sent_callback);
     tcp_recv(newpcb, utilization_recv_callback);
@@ -219,21 +222,21 @@ int setup_utilization_socket(void)
 {
     utiliz_socket = tcp_new_ip_type(IPADDR_TYPE_V4);
     if (utiliz_socket == NULL) {
-        sel4cp_dbg_puts("Failed to open a socket for listening!");
+        print("Failed to open a socket for listening!");
         return -1;
     }
 
     err_t error = tcp_bind(utiliz_socket, IP_ANY_TYPE, UTILIZATION_PORT);
     if (error) {
-        sel4cp_dbg_puts("Failed to bind the TCP socket");
+        print("Failed to bind the TCP socket");
         return -1;
     } else {
-        sel4cp_dbg_puts("Utilisation port bound to port 1236");
+        print("Utilisation port bound to port 1236\n");
     }
 
     utiliz_socket = tcp_listen_with_backlog_and_err(utiliz_socket, 1, &error);
     if (error != ERR_OK) {
-        sel4cp_dbg_puts("Failed to listen on the utilization socket");
+        print("Failed to listen on the utilization socket");
         return -1;
     }
     tcp_accept(utiliz_socket, utilization_accept_callback);

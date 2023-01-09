@@ -14,6 +14,7 @@
 #define RACC_LINEDIS    (1UL << 6) /* Discard frames with MAC layer errors */
 #define RCR_MII_MODE    (1UL << 2) /* This field must always be set */
 #define RCR_RGMII_EN    (1UL << 6) /* RGMII  Mode Enable. RMII must not be set */
+#define RCR_PROMISCUOUS (1UL << 3) /* Accept all frames regardless of address matching */
 #define ECR_ETHEREN     2
 #define ECR_SPEED       (1UL << 5) /* Enable 1000Mbps */
 #define PAUSE_OPCODE_FIELD (1UL << 16)

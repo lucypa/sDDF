@@ -56,6 +56,7 @@
 #include "netif/ethernet.h"
 
 #include <string.h>
+#include "util.h"
 
 #ifdef LWIP_HOOK_FILENAME
 #include LWIP_HOOK_FILENAME
@@ -659,6 +660,7 @@ etharp_input(struct pbuf *p, struct netif *netif)
     LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_WARNING,
                 ("etharp_input: packet dropped, wrong hw type, hwlen, proto, protolen or ethernet type (%"U16_F"/%"U16_F"/%"U16_F"/%"U16_F")\n",
                  hdr->hwtype, (u16_t)hdr->hwlen, hdr->proto, (u16_t)hdr->protolen));
+    print("etharp_input: packet dropped, wrong hw type, hwlen, proto, protolen or ethernet type")
     ETHARP_STATS_INC(etharp.proterr);
     ETHARP_STATS_INC(etharp.drop);
     pbuf_free(p);

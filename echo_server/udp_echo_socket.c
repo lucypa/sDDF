@@ -17,6 +17,7 @@
 #include "lwip/udp.h"
 
 #include "echo.h"
+#include "util.h"
 
 #define UDP_ECHO_PORT 1235
 
@@ -35,7 +36,7 @@ int setup_udp_socket(void)
 {
     udp_socket = udp_new_ip_type(IPADDR_TYPE_V4);
     if (udp_socket == NULL) {
-        sel4cp_dbg_puts("Failed to open a UDP socket");
+        print("Failed to open a UDP socket");
         return -1;
     }
 
@@ -43,7 +44,7 @@ int setup_udp_socket(void)
     if (error == ERR_OK) {
         udp_recv(udp_socket, lwip_udp_recv_callback, udp_socket);
     } else {
-        sel4cp_dbg_puts("Failed to bind the UDP socket");
+        print("Failed to bind the UDP socket");
         return -1;
     }
 
