@@ -21,8 +21,10 @@
 /* Memory regions. These all have to be here to keep compiler happy */
 uintptr_t hw_ring_buffer_vaddr;
 uintptr_t hw_ring_buffer_paddr;
-uintptr_t shared_dma_vaddr;
-uintptr_t shared_dma_paddr;
+uintptr_t shared_dma_vaddr_rx;
+uintptr_t shared_dma_paddr_rx;
+uintptr_t shared_dma_vaddr_tx;
+uintptr_t shared_dma_paddr_tx;
 uintptr_t rx_cookies;
 uintptr_t tx_cookies;
 uintptr_t rx_avail;
@@ -103,17 +105,27 @@ dump_mac(uint8_t *mac)
 }
 
 static uintptr_t 
-getPhysAddr(uintptr_t virtual)
+getPhysAddr(uintptr_t virtual, int tx)
 {
-    uint64_t offset = virtual - shared_dma_vaddr;
+    uint64_t offset;
     uintptr_t phys;
+    if (tx) {
+        offset = virtual - shared_dma_vaddr_tx;
+    } else {
+        offset = virtual - shared_dma_vaddr_rx;
+    }
 
     if (offset < 0) {
         print("getPhysAddr: offset < 0");
         return 0;
     }
 
-    phys = shared_dma_paddr + offset;
+    if (tx) {
+        phys = shared_dma_paddr_tx + offset;
+    } else {
+        phys = shared_dma_paddr_rx + offset;
+    }
+
     return phys;
 }
 
@@ -154,9 +166,7 @@ alloc_rx_buf(size_t buf_size, void **cookie)
         return 0;
     }
 
-    uintptr_t phys = getPhysAddr(addr);
-
-    return getPhysAddr(addr);
+    return getPhysAddr(addr, 0);
 }
 
 static void fill_rx_bufs()
@@ -375,7 +385,7 @@ handle_tx(volatile struct enet_regs *eth)
 
     // We need to put in an empty condition here. 
     while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        uintptr_t phys = getPhysAddr(buffer);
+        uintptr_t phys = getPhysAddr(buffer, 1);
         raw_tx(eth, 1, &phys, &len, cookie);
     }
 }
@@ -393,7 +403,7 @@ eth_setup(void)
     rx.remain = rx.cnt - 2;
     rx.tail = 0;
     rx.head = 0;
-    rx.phys = shared_dma_paddr;
+    rx.phys = shared_dma_paddr_rx;
     rx.cookies = (void **)rx_cookies;
     rx.descr = (volatile struct descriptor *)hw_ring_buffer_vaddr;
 
@@ -401,7 +411,7 @@ eth_setup(void)
     tx.remain = tx.cnt - 2;
     tx.tail = 0;
     tx.head = 0;
-    tx.phys = shared_dma_paddr + (sizeof(struct descriptor) * RX_COUNT);
+    tx.phys = shared_dma_paddr_tx;
     tx.cookies = (void **)tx_cookies;
     tx.descr = (volatile struct descriptor *)(hw_ring_buffer_vaddr + (sizeof(struct descriptor) * RX_COUNT));
 
@@ -481,8 +491,8 @@ void init_post()
     ring_init(&tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 0);
 
     fill_rx_bufs();
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": init complete -- waiting for interrupt\n");
+    print(sel4cp_name);
+    print(": init complete -- waiting for interrupt\n");
     sel4cp_notify(INIT);
 
     /* Now take away our scheduling context. Uncomment this for a passive driver. */
@@ -494,8 +504,8 @@ void init_post()
 
 void init(void)
 {
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     eth_setup();
 

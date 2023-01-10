@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include <string.h>
 
 uintptr_t rx_avail_mux;
 uintptr_t rx_used_mux;
@@ -11,13 +12,18 @@ uintptr_t shared_dma_vaddr_mux;
 uintptr_t shared_dma_vaddr_cli;
 uintptr_t uart_base;
 
-#define CLIENT 0
+#define MUX 0
+#define CLIENT 1
+#define BUF_SIZE 2048
+#define NUM_BUFFERS 512
 
 ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
+int initialised = 0;
 
 void process_rx_complete(void) 
 {
+    sel4cp_dbg_puts("copy: process_rx_complete\n");
     int was_empty = ring_empty(rx_ring_cli.used_ring);
     while(!ring_empty(rx_ring_mux.used_ring)) {
         uintptr_t m_addr, c_addr;
@@ -27,7 +33,14 @@ void process_rx_complete(void)
 
         dequeue_used(&rx_ring_mux, &m_addr, &m_len, &cookie);
         // get an available one from clients queue.
+        // TODO: Check the address we dequeue is sane and return
+        // it if not. 
         dequeue_avail(&rx_ring_cli, &c_addr, &c_len, &cookie2);
+        if (!c_addr || c_addr < shared_dma_vaddr_cli ||
+                c_addr > (shared_dma_vaddr_cli + (2048*512))) {
+            print("Copy.c got an insane address\n");
+        }
+
         // copy the data over to the clients address space. 
         memcpy(c_addr, m_addr, m_len);
 
@@ -45,6 +58,13 @@ void process_rx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
+    if (!initialised) {
+        // propogate this down the line to ensure everyone is
+        // initliased in correct order.
+        sel4cp_notify(MUX);
+        initialised = 1;
+        return;
+    } 
     // we have one job.
     process_rx_complete();
 }
@@ -52,8 +72,14 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_drv, (ring_buffer_t *)rx_used_drv, NULL, 0);
+    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 0);
     ring_init(&rx_ring_cli, (ring_buffer_t *)rx_avail_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
     
+    /* Enqueue available buffers for the mux to access */
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_mux + (BUF_SIZE * i);
+        enqueue_avail(&rx_ring_mux, addr, BUF_SIZE, NULL);
+    }
+
     return;
 }

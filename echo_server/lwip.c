@@ -37,7 +37,8 @@ uintptr_t rx_used;
 uintptr_t tx_avail;
 uintptr_t tx_used;
 uintptr_t copy_rx;
-uintptr_t shared_dma_vaddr;
+uintptr_t shared_dma_vaddr_rx;
+uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
 typedef enum {
@@ -248,6 +249,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
 void process_rx_queue(void) 
 {
+    sel4cp_dbg_puts("lwip: process_rx_queue\n");
     while(!ring_empty(state.rx_ring.used_ring)) {
         incoming++;
         uintptr_t addr;
@@ -319,7 +321,7 @@ static void netif_status_callback(struct netif *netif)
 
 static void get_mac(void)
 {
-    sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
+    /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
     state.mac[0] = palr >> 24;
@@ -327,7 +329,13 @@ static void get_mac(void)
     state.mac[2] = palr >> 8 & 0xff;
     state.mac[3] = palr & 0xff;
     state.mac[4] = paur >> 24;
-    state.mac[5] = paur >> 16 & 0xff;
+    state.mac[5] = paur >> 16 & 0xff;*/
+    state.mac[0] = 0;
+    state.mac[1] = 0x4;
+    state.mac[2] = 0x9f;
+    state.mac[3] = 0x5;
+    state.mac[4] = 0xf8;
+    state.mac[5] = 0xcc;
 }
 
 void init_post(void)
@@ -337,20 +345,20 @@ void init_post(void)
     netif_set_up(&(state.netif));
 
     if (dhcp_start(&(state.netif))) {
-        sel4cp_dbg_puts("failed to start DHCP negotiation\n");
+        print("failed to start DHCP negotiation\n");
     }
 
     setup_udp_socket();
     setup_utilization_socket();
 
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": init complete -- waiting for notification\n");
+    print(sel4cp_name);
+    print(": init complete -- waiting for notification\n");
 }
 
 void init(void)
 {
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     /* Set up shared memory regions */
     ring_init(&state.rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 1);
@@ -360,7 +368,7 @@ void init(void)
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         ethernet_buffer_t *buffer = &state.buffer_metadata[i];
         *buffer = (ethernet_buffer_t) {
-            .buffer = shared_dma_vaddr + (BUF_SIZE * i),
+            .buffer = shared_dma_vaddr_rx + (BUF_SIZE * i),
             .size = BUF_SIZE,
             .origin = ORIGIN_RX_QUEUE,
             .index = i,
@@ -372,7 +380,7 @@ void init(void)
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         ethernet_buffer_t *buffer = &state.buffer_metadata[i + NUM_BUFFERS];
         *buffer = (ethernet_buffer_t) {
-            .buffer = shared_dma_vaddr + (BUF_SIZE * (i + NUM_BUFFERS)),
+            .buffer = shared_dma_vaddr_tx + (BUF_SIZE * i),
             .size = BUF_SIZE,
             .origin = ORIGIN_TX_QUEUE,
             .index = i + NUM_BUFFERS,

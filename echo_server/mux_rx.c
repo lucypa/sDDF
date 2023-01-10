@@ -160,18 +160,6 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == 3) {
-        print("Total rx packets = ");
-        puthex64(total);
-        print("\nDropped Packets = ");
-        puthex64(dropped);
-        print("\n");
-        total = 0;
-        dropped = 0;
-        sel4cp_notify(4);
-        return;
-    }
-
     if (initialised) {
         process_rx_complete();
         process_rx_free(); 
