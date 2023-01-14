@@ -70,6 +70,7 @@ ring_handle_t tx_ring;
 static uint8_t mac[6];
 
 volatile struct enet_regs *eth = (void *)(uintptr_t)0x2000000;
+uint32_t irq_mask = IRQ_MASK;
 
 static void get_mac_addr(volatile struct enet_regs *reg, uint8_t *mac)
 {
@@ -152,6 +153,7 @@ static inline void
 enable_irqs(volatile struct enet_regs *eth, uint32_t mask)
 {
     eth->eimr = mask;
+    irq_mask = mask;
 }
 
 static uintptr_t 
@@ -209,6 +211,7 @@ handle_rx(volatile struct enet_regs *eth)
 
     int num = 1;
     int was_empty = ring_empty(rx_ring.used_ring);
+    int one_empty = 0;
 
     // we don't want to dequeue packets if we have nothing to replace it with
     while (head != ring->tail && (ring_size(rx_ring.avail_ring) > num)) {
@@ -216,6 +219,7 @@ handle_rx(volatile struct enet_regs *eth)
 
         /* If the slot is still marked as empty we are done. */
         if (d->stat & RXD_EMPTY) {
+            one_empty = 1;
             break;
         }
 
@@ -239,7 +243,11 @@ handle_rx(volatile struct enet_regs *eth)
     the client hasn't already been notified!) */
     if (num > 1 && was_empty) {
         sel4cp_notify(RX_CH);
-    } 
+    } else if (num == 1 && one_empty) {
+        // we didn't process any packets because the queues are full
+        // disable irqs. 
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+    }
 }
 
 static void
@@ -250,6 +258,8 @@ complete_tx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &tx;
     unsigned int head = ring->head;
     unsigned int cnt = 0;
+
+    int was_empty = ring_empty(tx_ring.avail_ring);
 
     while (head != ring->tail) {
         if (0 == cnt) {
@@ -290,6 +300,10 @@ complete_tx(volatile struct enet_regs *eth)
 
             enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
         }
+    }
+
+    if (was_empty) {
+        sel4cp_notify(TX_CH);
     }
 
     /* The only reason to arrive here is when head equals tails. If cnt is not
@@ -355,11 +369,11 @@ raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
 static void 
 handle_eth(volatile struct enet_regs *eth)
 {
-    uint32_t e = eth->eir & IRQ_MASK;
+    uint32_t e = eth->eir & irq_mask;
     /* write to clear events */
     eth->eir = e;
 
-    while (e & IRQ_MASK) {
+    while (e & irq_mask) {
         if (e & NETIRQ_TXF) {
             complete_tx(eth);
         }
@@ -371,7 +385,7 @@ handle_eth(volatile struct enet_regs *eth)
             print("Error: System bus/uDMA");
             while (1);
         }
-        e = eth->eir & IRQ_MASK;
+        e = eth->eir & irq_mask;
         eth->eir = e;
     }
 }
@@ -540,7 +554,7 @@ void notified(sel4cp_channel ch)
             have_signal = true;
             signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
             signal = (BASE_IRQ_CAP + IRQ_CH);
-            return;
+            break;
         case RX_CH:
             init_post();
             break;
@@ -551,5 +565,8 @@ void notified(sel4cp_channel ch)
             sel4cp_dbg_puts("eth driver: received notification on unexpected channel\n");
             puthex64(ch);
             break;
+    }
+    if (ring_empty(rx_ring.used_ring)) {
+        enable_irqs(eth, IRQ_MASK);
     }
 }

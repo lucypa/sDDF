@@ -20,12 +20,9 @@ typedef struct state {
 } state_t;
 
 state_t state;
-uint64_t packets = 0;
-
 /* 
 Loop over all used tx buffers in client queues and enqueue to driver.
 TODO: Put client prioritisation in here. 
-TODO: combine tx notify with wait system call
 */
 void process_tx_ready(void)
 {
@@ -42,7 +39,6 @@ void process_tx_ready(void)
             break;
         }
         enqueue_used(&state.tx_ring_drv, addr, len, cookie);
-        packets++;
     }
 
     if (was_empty) {
@@ -69,13 +65,6 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == 4) {
-        print("Total tx packets = ");
-        puthex64(packets);
-        print("\n");
-        sel4cp_notify(0);
-        return;
-    }
     process_tx_ready();
     process_tx_complete();
 }
