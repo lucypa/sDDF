@@ -163,7 +163,7 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     unsigned int len;
 
     /* Try to grab a buffer from the available ring */
-    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
+    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookiep)) {
         print("RX Available ring is empty\n");
         return 0;
     }
@@ -258,6 +258,7 @@ complete_tx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &tx;
     unsigned int head = ring->head;
     unsigned int cnt = 0;
+    int enqueued = 0;
 
     int was_empty = ring_empty(tx_ring.avail_ring);
 
@@ -282,7 +283,7 @@ complete_tx(volatile struct enet_regs *eth)
                 eth->tdar = TDAR_TDAR;
             }
             if (d->stat & TXD_READY) {
-                return;
+                break;
             }
         }
 
@@ -299,10 +300,11 @@ complete_tx(volatile struct enet_regs *eth)
             buff_desc_t *desc = (buff_desc_t *)cookie;
 
             enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            enqueued++;
         }
     }
 
-    if (was_empty) {
+    if (was_empty && enqueued) {
         sel4cp_notify(TX_CH);
     }
 
