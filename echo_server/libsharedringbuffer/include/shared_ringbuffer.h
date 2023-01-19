@@ -153,7 +153,7 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
  * @param len length of data inside the buffer above.
  * @param cookie optional pointer to data required on dequeueing.
  *
- * @return -1 when ring is empty, 0 on success.
+ * @return -1 when ring is full, 0 on success.
  */
 static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
@@ -169,7 +169,7 @@ static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned in
  * @param len length of data inside the buffer above.
  * @param cookie optional pointer to data required on dequeueing.
  *
- * @return -1 when ring is empty, 0 on success.
+ * @return -1 when ring is full, 0 on success.
  */
 static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
