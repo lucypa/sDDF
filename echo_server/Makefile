@@ -49,7 +49,7 @@ CFLAGS += -I$(BOARD_DIR)/include \
 	-I$(LWIPDIR)/include \
 	-I$(LWIPDIR)/include/ipv4 \
 	-I$(RINGBUFFERDIR)/include \
-	-I$(BENCHDIR)/include 
+	-I$(BENCHDIR)/include
 
 # COREFILES, CORE4FILES: The minimum set of files needed for lwIP.
 COREFILES=$(LWIPDIR)/core/init.c \
@@ -133,14 +133,14 @@ $(IMAGE_FILE) $(REPORT_FILE): $(addprefix $(BUILD_DIR)/, $(IMAGES)) eth.system
 %.o:
 	$(CC) $(CFLAGS) -c $(@:.o=.c) -o $@
 
-#Make the Directories
+# Make the Directories
 directories:
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src))	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/core)) 	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/core/ipv4)) \
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/netif))	\
-    $(info $(shell mkdir -p $(BUILD_DIR)/libsharedringbuffer))	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/benchmark))	\
+	$(shell mkdir -p $(BUILD_DIR)/lwip/src)	\
+	$(shell mkdir -p $(BUILD_DIR)/lwip/src/core) 	\
+	$(shell mkdir -p $(BUILD_DIR)/lwip/src/core/ipv4) \
+	$(shell mkdir -p $(BUILD_DIR)/lwip/src/netif)	\
+    $(shell mkdir -p $(BUILD_DIR)/libsharedringbuffer)	\
+	$(shell mkdir -p $(BUILD_DIR)/benchmark)	\
 
 clean:
 	rm -f *.o *.elf .depend*
@@ -152,4 +152,3 @@ include .depend
 
 .depend: $(LWIPFILES)
 	$(CC) $(CFLAGS) -MM $^ > .depend || rm -f .depend
-	
