@@ -226,8 +226,9 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
     if (err) {
-        print("ARM Vspace clean failed\n");
-        print(err);
+        print("ARM Vspace clean failed: ");
+        puthex64(err);
+        print("\n");
     }
 
     /* insert into the used tx queue */
@@ -266,7 +267,8 @@ void process_rx_queue(void)
         int err = seL4_ARM_VSpace_Invalidate_Data(3, buffer->buffer, buffer->buffer + ETHER_MTU);
         if (err) {
             print("ARM Vspace invalidate failed\n");
-            print(err);
+            puthex64(err);
+            print("\n");
         }
 
         struct pbuf *p = create_interface_buffer(&state, (void *)buffer, len);
