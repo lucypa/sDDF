@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <sel4cp.h>
 #include <string.h>
-
+#include <assert.h>
 #include "lwip/init.h"
 #include "netif/etharp.h"
 #include "lwip/pbuf.h"
@@ -41,6 +41,7 @@ uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
+#define PBUF_MAGIC (0x12341232412341234ULL)
 typedef enum {
     ORIGIN_RX_QUEUE,
     ORIGIN_TX_QUEUE,
@@ -82,6 +83,7 @@ typedef struct lwip_custom_pbuf {
     struct pbuf_custom custom;
     ethernet_buffer_t *buffer;
     state_t *state;
+    uint64_t magic;
 } lwip_custom_pbuf_t;
 LWIP_MEMPOOL_DECLARE(
     RX_POOL,
@@ -124,6 +126,7 @@ static void interface_free_buffer(struct pbuf *buf)
 
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
 
+    assert(buf->magic == PBUF_MAGIC);
     SYS_ARCH_PROTECT(old_level);
     return_buffer(custom_pbuf->state, custom_pbuf->buffer);
     LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
@@ -146,6 +149,7 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
     custom_pbuf->state = state;
     custom_pbuf->buffer = buffer;
     custom_pbuf->custom.custom_free_function = interface_free_buffer;
+    custom_pbuf->magic = PBUF_MAGIC;
 
     return pbuf_alloced_custom(
         PBUF_RAW,
