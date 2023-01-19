@@ -110,9 +110,9 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
     ring->buffers[ring->write_idx % SIZE].encoded_addr = buffer;
     ring->buffers[ring->write_idx % SIZE].len = len;
     ring->buffers[ring->write_idx % SIZE].cookie = cookie;
-    ring->write_idx++;
 
     THREAD_MEMORY_RELEASE();
+    ring->write_idx++;
 
     return 0;
 }
