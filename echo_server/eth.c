@@ -156,7 +156,7 @@ enable_irqs(volatile struct enet_regs *eth, uint32_t mask)
     irq_mask = mask;
 }
 
-static uintptr_t 
+static uintptr_t
 alloc_rx_buf(size_t buf_size, void **cookie)
 {
     uintptr_t addr;
@@ -366,7 +366,7 @@ raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
 
 }
 
-static void 
+static void
 handle_eth(volatile struct enet_regs *eth)
 {
     uint32_t e = eth->eir & irq_mask;
@@ -458,7 +458,7 @@ eth_setup(void)
     eth->galr = 0;
 
     if (eth->palr == 0) {
-        // the mac address needs setting again. 
+        // the mac address needs setting again.
         set_mac(eth, mac);
     }
 
@@ -531,7 +531,7 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
     switch (ch) {
         case INIT:
-            // return the MAC address. 
+            // return the MAC address.
             sel4cp_mr_set(0, eth->palr);
             sel4cp_mr_set(1, eth->paur);
             return sel4cp_msginfo_new(0, 2);

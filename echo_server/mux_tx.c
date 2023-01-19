@@ -48,13 +48,12 @@ void process_tx_ready(void)
     }
 }
 
-
 // Return available tx buffers to clients.
 // TODO: We need a way of knowing which client
-// this buffer originated from. 
+// this buffer originated from.
 void process_tx_complete(void)
 {
-    while(!ring_empty(state.tx_ring_drv.avail_ring)) {
+    while (!ring_empty(state.tx_ring_drv.avail_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;

@@ -136,7 +136,7 @@ static void interface_free_buffer(struct pbuf *buf)
  * @param state client state data.
  * @param buffer ethernet buffer containing metadata for the actual buffer
  * @param length length of data
- * 
+ *
  * @return the newly created pbuf.
  */
 static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *buffer, size_t length)
@@ -165,7 +165,7 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
  *
  */
 static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
-{   
+{
     if (BUF_SIZE < length) {
         sel4cp_dbg_puts("Requested buffer size too large.");
         return NULL;
@@ -247,7 +247,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     return ret;
 }
 
-void process_rx_queue(void) 
+void process_rx_queue(void)
 {
     sel4cp_dbg_puts("lwip: process_rx_queue\n");
     while(!ring_empty(state.rx_ring.used_ring)) {
@@ -339,7 +339,7 @@ static void get_mac(void)
 }
 
 void init_post(void)
-{   
+{
     dump_mac(state.mac);
     netif_set_status_callback(&(state.netif), netif_status_callback);
     netif_set_up(&(state.netif));
