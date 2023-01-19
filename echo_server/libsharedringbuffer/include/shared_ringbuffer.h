@@ -103,7 +103,7 @@ static inline void notify(ring_handle_t *ring)
 static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int len, void *cookie)
 {
     if (ring_full(ring)) {
-        sel4cp_dbg_puts("Ring full");
+        sel4cp_dbg_puts("ERROR: Attempting to enqueue to full ring\n");
         return -1;
     }
 
@@ -130,7 +130,7 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
 static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
     if (ring_empty(ring)) {
-        //sel4cp_dbg_puts("Ring is empty");
+        sel4cp_dbg_puts("ERROR: Attempting to dequeue from empty ring\n");
         return -1;
     }
 
