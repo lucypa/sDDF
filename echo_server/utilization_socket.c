@@ -126,25 +126,27 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         return ERR_OK;
     }
 
+    char *data_packet_str = (char *)data_packet;
+
     pbuf_copy_partial(p, (void *)data_packet, p->tot_len, 0);
     err_t error;
 
-    if (msg_match(data_packet, HELLO)) {
+    if (msg_match(data_packet_str, HELLO)) {
         error = tcp_write(pcb, OK_READY, strlen(OK_READY), TCP_WRITE_FLAG_COPY);
         if (error) {
             sel4cp_dbg_puts("Failed to send OK_READY message through utilization peer");
         }
-    } else if (msg_match(data_packet, LOAD)) {
+    } else if (msg_match(data_packet_str, LOAD)) {
         error = tcp_write(pcb, OK, strlen(OK), TCP_WRITE_FLAG_COPY);
         if (error) {
             sel4cp_dbg_puts("Failed to send OK message through utilization peer");
         }
-    } else if (msg_match(data_packet, SETUP)) {
+    } else if (msg_match(data_packet_str, SETUP)) {
         error = tcp_write(pcb, OK, strlen(OK), TCP_WRITE_FLAG_COPY);
         if (error) {
             sel4cp_dbg_puts("Failed to send OK message through utilization peer");
         }
-    } else if (msg_match(data_packet, START)) {
+    } else if (msg_match(data_packet_str, START)) {
         print("measurement starting... \n");
 
         start = bench->ts;
@@ -154,7 +156,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         sel4cp_notify(START_PMU);
         sel4cp_notify(7);
 
-    } else if (msg_match(data_packet, STOP)) {
+    } else if (msg_match(data_packet_str, STOP)) {
         print("measurement finished \n");;
 
         uint64_t total, idle;
@@ -189,11 +191,11 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         sel4cp_notify(STOP_PMU);
         // @ivanv: What is 7? Don't see anything with id 7 in the system file...
         sel4cp_notify(7);
-    } else if (msg_match(data_packet, QUIT)) {
+    } else if (msg_match(data_packet_str, QUIT)) {
         /* Do nothing for now */
     } else {
         sel4cp_dbg_puts("Received a message that we can't handle ");
-        sel4cp_dbg_puts((char *)data_packet);
+        sel4cp_dbg_puts(data_packet_str);
         sel4cp_dbg_puts("\n");
         error = tcp_write(pcb, ERROR, strlen(ERROR), TCP_WRITE_FLAG_COPY);
         if (error) {
