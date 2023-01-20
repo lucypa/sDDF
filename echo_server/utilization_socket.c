@@ -78,8 +78,6 @@ uintptr_t cyclecounters_vaddr;
     ","STR(y)","STR(z)
 
 
-#define ULONG_MAX 0xffffffffffffffff
-
 struct bench *bench = (void *)(uintptr_t)0x5010000;
 
 uint64_t start;
