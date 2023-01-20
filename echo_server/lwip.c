@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <sel4cp.h>
 #include <string.h>
-#include <assert.h>
 #include "lwip/init.h"
 #include "netif/etharp.h"
 #include "lwip/pbuf.h"
@@ -126,7 +125,9 @@ static void interface_free_buffer(struct pbuf *buf)
 
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
 
-    assert(buf->magic == PBUF_MAGIC);
+    if (custom_pbuf->magic != PBUF_MAGIC) {
+        print("MAGIC ASSERTION FAILED\n");
+    }
     SYS_ARCH_PROTECT(old_level);
     return_buffer(custom_pbuf->state, custom_pbuf->buffer);
     LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
@@ -180,7 +181,7 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
     ethernet_buffer_t *buffer;
 
     if (ring_empty(state->tx_ring.avail_ring)) {
-        print("TX available ring is empty!\n");
+        print("LWIP|ERROR: TX available ring is empty!\n");
         return NULL;
     }
 

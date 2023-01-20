@@ -128,7 +128,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         return ERR_OK;
     }
 
-    pbuf_copy_partial(p, data_packet, p->tot_len, 0);
+    pbuf_copy_partial(p, (void *)data_packet, p->tot_len, 0);
     err_t error;
 
     if (msg_match(data_packet, HELLO)) {
@@ -156,9 +156,9 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         sel4cp_notify(START_PMU);
         sel4cp_notify(7);
 
-    } else if (msg_match(data_packet, STOP)) {        
+    } else if (msg_match(data_packet, STOP)) {
         print("measurement finished \n");;
-        
+
         uint64_t total, idle;
 
         total = bench->ts - start;
@@ -187,14 +187,15 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         error = tcp_write(pcb, buffer, strlen(buffer), TCP_WRITE_FLAG_COPY);
 
         tcp_shutdown(pcb, 0, 1);
-        
+
         sel4cp_notify(STOP_PMU);
+        // @ivanv: What is 7? Don't see anything with id 7 in the system file...
         sel4cp_notify(7);
     } else if (msg_match(data_packet, QUIT)) {
         /* Do nothing for now */
     } else {
         sel4cp_dbg_puts("Received a message that we can't handle ");
-        sel4cp_dbg_puts(data_packet);
+        sel4cp_dbg_puts((char *)data_packet);
         sel4cp_dbg_puts("\n");
         error = tcp_write(pcb, ERROR, strlen(ERROR), TCP_WRITE_FLAG_COPY);
         if (error) {
@@ -207,6 +208,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
 
 static err_t utilization_accept_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
 {
+    // @ivanv: should print out which port the connection is established on.
     print("Utilization connection established!\n");
     err_t error = tcp_write(newpcb, WHOAMI, strlen(WHOAMI), TCP_WRITE_FLAG_COPY);
     if (error) {
@@ -214,7 +216,7 @@ static err_t utilization_accept_callback(void *arg, struct tcp_pcb *newpcb, err_
     }
     tcp_sent(newpcb, utilization_sent_callback);
     tcp_recv(newpcb, utilization_recv_callback);
-    
+
     return ERR_OK;
 }
 

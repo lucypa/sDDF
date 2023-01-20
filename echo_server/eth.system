@@ -105,7 +105,6 @@
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
     </protection_domain>
 
-
     <protection_domain name="lwip" priority="98" budget="20000" >
         <program_image path="lwip.elf" />
 
