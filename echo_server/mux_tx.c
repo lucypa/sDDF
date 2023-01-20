@@ -20,12 +20,14 @@ typedef struct state {
 } state_t;
 
 state_t state;
-/* 
+
+/*
 Loop over all used tx buffers in client queues and enqueue to driver.
-TODO: Put client prioritisation in here. 
+TODO: Put client prioritisation in here.
 */
 void process_tx_ready(void)
 {
+    // @ivanv: should this be in the loop?
     bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
 
     while(!ring_empty(state.tx_ring_clients[0].used_ring)) {
@@ -33,7 +35,7 @@ void process_tx_ready(void)
         unsigned int len;
         void *cookie;
 
-        int err = dequeue_used(&state.tx_ring_clients[0], &addr, &len, &cookie);   
+        int err = dequeue_used(&state.tx_ring_clients[0], &addr, &len, &cookie);
         if (err) {
             print("process_tx_ready dequeue used failed.\n");
             break;
@@ -71,9 +73,11 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    // FIX ME: Use the notify function pointer to put the notification in? 
+    // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_avail_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
     ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_avail_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
+
+    print("MUX: initialised\n");
 
     return;
 }

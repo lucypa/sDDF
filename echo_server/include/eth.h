@@ -5,6 +5,8 @@
 
 #pragma once
 
+// @ivanv: Where do these come from!
+
 #define ECR_RESET       (1UL)
 #define ECR_DBSWP       (1UL << 8) /* descriptor byte swapping enable */
 #define MIBC_DIS        (1UL << 31)

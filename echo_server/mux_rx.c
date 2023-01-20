@@ -12,8 +12,8 @@ uintptr_t shared_dma_vaddr;
 uintptr_t uart_base;
 
 #define NUM_CLIENTS 1
-#define RX_CH 1
-#define INIT_DRV 1
+/* Channel ID for driver, only used for initialisation. */
+#define DRIVER_CH 1
 
 #define ETHER_MTU 1500
 
@@ -93,10 +93,11 @@ void process_rx_complete(void)
         int err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
         if (err) {
             print("ARM Vspace invalidate failed\n");
-            print(err);
+            puthex64(err);
+            print("\n");
         }
 
-        // Get MAC address and work out which client it is. 
+        // Get MAC address and work out which client it is.
         int client = get_client(addr);
         if (client >= 0) {
             /* enqueue it. */
@@ -162,10 +163,10 @@ void notified(sel4cp_channel ch)
 {
     if (initialised) {
         process_rx_complete();
-        process_rx_free(); 
+        process_rx_free();
     } else {
         process_rx_free();
-        sel4cp_notify(INIT_DRV);
+        sel4cp_notify(DRIVER_CH);
         initialised = 1;
     }
 }

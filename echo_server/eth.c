@@ -37,10 +37,12 @@ uintptr_t uart_base;
 #define PACKET_BUFFER_SIZE  2048
 #define MAX_PACKET_SIZE     1536
 
+// @ivanv: These depend on the value of SIZE in shared_ringbuffer.h right?
+// Should be some kind of static assert here
 #define RX_COUNT 256
 #define TX_COUNT 256
 
-_Static_assert((512 * 2) * PACKET_BUFFER_SIZE <= 0x200000, "Expect rx+tx buffers to fit in single 2MB page");
+_Static_assert((RX_COUNT + TX_COUNT) * 2 * PACKET_BUFFER_SIZE <= 0x200000, "Expect rx+tx buffers to fit in single 2MB page");
 _Static_assert(sizeof(ring_buffer_t) <= 0x200000, "Expect ring buffer ring to fit in single 2MB page");
 
 struct descriptor {
@@ -105,8 +107,8 @@ dump_mac(uint8_t *mac)
     putC('\n');
 }
 
-static uintptr_t 
-getPhysAddr(uintptr_t virtual, int tx)
+static uintptr_t
+get_phys_addr(uintptr_t virtual, int tx)
 {
     uint64_t offset;
     uintptr_t phys;
@@ -117,7 +119,7 @@ getPhysAddr(uintptr_t virtual, int tx)
     }
 
     if (offset < 0) {
-        print("getPhysAddr: offset < 0");
+        print("get_phys_addr: offset < 0");
         return 0;
     }
 
@@ -163,12 +165,12 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     unsigned int len;
 
     /* Try to grab a buffer from the available ring */
-    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookiep)) {
+    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
         print("RX Available ring is empty\n");
         return 0;
     }
 
-    return getPhysAddr(addr, 0);
+    return get_phys_addr(addr, 0);
 }
 
 static void fill_rx_bufs()
@@ -239,13 +241,13 @@ handle_rx(volatile struct enet_regs *eth)
         num++;
     }
 
-    /* Notify client (only if we have actually processed a packet and 
+    /* Notify client (only if we have actually processed a packet and
     the client hasn't already been notified!) */
     if (num > 1 && was_empty) {
         sel4cp_notify(RX_CH);
     } else if (num == 1 && one_empty) {
         // we didn't process any packets because the queues are full
-        // disable irqs. 
+        // disable irqs.
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
 }
@@ -313,7 +315,7 @@ complete_tx(volatile struct enet_regs *eth)
      * of tx descriptors holding data can't exceed the space in the ring.
      */
     if (0 != cnt) {
-        print("head reached tail, but cnt!= 0");
+        // print("head reached tail, but cnt!= 0");
     }
 }
 
@@ -392,21 +394,21 @@ handle_eth(volatile struct enet_regs *eth)
     }
 }
 
-static void 
+static void
 handle_tx(volatile struct enet_regs *eth)
 {
     uintptr_t buffer = 0;
     unsigned int len = 0;
     void *cookie = NULL;
 
-    // We need to put in an empty condition here. 
+    // We need to put in an empty condition here.
     while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        uintptr_t phys = getPhysAddr(buffer, 1);
+        uintptr_t phys = get_phys_addr(buffer, 1);
         raw_tx(eth, 1, &phys, &len, cookie);
     }
 }
 
-static void 
+static void
 eth_setup(void)
 {
     get_mac_addr(eth, mac);
