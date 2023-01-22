@@ -85,9 +85,9 @@ void process_rx_complete(void)
     int notify_clients[NUM_CLIENTS];
     while(!ring_empty(state.rx_ring_drv.used_ring)) {
         total++;
-        uintptr_t addr;
-        unsigned int len;
-        void *cookie;
+        uintptr_t addr = 0;
+        unsigned int len = 0;
+        void *cookie = NULL;
 
         dequeue_used(&state.rx_ring_drv, &addr, &len, &cookie);
         int err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
@@ -111,7 +111,13 @@ void process_rx_complete(void)
             }
         } else {
             // no match, not for us, return the buffer to the driver.
-            enqueue_avail(&state.rx_ring_drv, addr, len, cookie);
+            if (addr == 0) {
+                print("MUX RX|ERROR: Attempting to add NULL buffer to driver RX ring\n");
+            }
+            err = enqueue_avail(&state.rx_ring_drv, addr, len, cookie);
+            if (err) {
+                print("MUX RX|ERROR: Failed to enqueue available to driver RX ring\n");
+            }
             dropped++;
         }
     }
@@ -132,8 +138,10 @@ void process_rx_free(void)
             uintptr_t addr;
             unsigned int len;
             void *buffer;
-            dequeue_avail(&state.rx_ring_clients[i], &addr, &len, &buffer);
-            enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
+            int err = dequeue_avail(&state.rx_ring_clients[i], &addr, &len, &buffer);
+            assert(!err);
+            err = enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
+            assert(!err);
         }
     }
 }

@@ -40,7 +40,7 @@ uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
-#define PBUF_MAGIC (0x12341232412341234ULL)
+#define PBUF_MAGIC (0x1234123241234ULL)
 typedef enum {
     ORIGIN_RX_QUEUE,
     ORIGIN_TX_QUEUE,
@@ -109,7 +109,8 @@ static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
     the ring should never be full. */
-    enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    int err = enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    assert(!err);
 }
 
 /**
@@ -237,10 +238,11 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     }
 
     /* insert into the used tx queue */
-    int error = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
-    if (error) {
-        print("TX used ring full\n");
-        enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+    err = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
+    if (err) {
+        print("LWIP|TX used ring full\n");
+        err = enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        assert(!err);
         return ERR_MEM;
     }
 
@@ -381,7 +383,8 @@ void init(void)
             .index = i,
             .in_use = false,
         };
-        enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        assert(!err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -394,7 +397,8 @@ void init(void)
             .in_use = false,
         };
 
-        enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        assert(!err);
     }
 
     lwip_init();

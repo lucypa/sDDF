@@ -27,17 +27,27 @@ void process_rx_complete(void)
 {
     sel4cp_dbg_puts("copy: process_rx_complete\n");
     int was_empty = ring_empty(rx_ring_cli.used_ring);
-    while(!ring_empty(rx_ring_mux.used_ring)) {
+    /* We only want to copy buffers if meet both conditions:
+       1. There are buffers from the mux to copy to.
+       2. There are buffers from the client to copy.
+    */
+    while (!ring_empty(rx_ring_mux.used_ring) &&
+            !ring_empty(rx_ring_cli.avail_ring) &&
+            !ring_full(rx_ring_mux.avail_ring) &&
+            !ring_full(rx_ring_cli.used_ring)) {
         uintptr_t m_addr, c_addr = 0;
         unsigned int m_len, c_len = 0;
         void *cookie = NULL;
         void *cookie2 = NULL;
+        int err;
 
-        dequeue_used(&rx_ring_mux, &m_addr, &m_len, &cookie);
+        err = dequeue_used(&rx_ring_mux, &m_addr, &m_len, &cookie);
+        assert(!err);
         // get an available one from clients queue.
         // TODO: Check the address we dequeue is sane and return
         // it if not.
-        dequeue_avail(&rx_ring_cli, &c_addr, &c_len, &cookie2);
+        err = dequeue_avail(&rx_ring_cli, &c_addr, &c_len, &cookie2);
+        assert(!err);
         if (!c_addr ||
                 c_addr < shared_dma_vaddr_cli ||
                 c_addr >= shared_dma_vaddr_cli + SHARED_DMA_SIZE)
@@ -62,9 +72,12 @@ void process_rx_complete(void)
         // copy the data over to the clients address space.
         memcpy((void *)c_addr, (void *)m_addr, m_len);
 
-        enqueue_used(&rx_ring_cli, c_addr, m_len, cookie2);
+        /* Now that we've copied the data, enqueue the buffer to the client's used ring. */
+        err = enqueue_used(&rx_ring_cli, c_addr, m_len, cookie2);
+        assert(!err);
         /* enqueue the old buffer back to dev_rx_ring.avail so the driver can use it again. */
-        enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
+        err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
+        assert(!err);
     }
 
     if (was_empty) {
@@ -99,7 +112,13 @@ void init(void)
     /* Enqueue available buffers for the mux to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_mux + (BUF_SIZE * i);
-        enqueue_avail(&rx_ring_mux, addr, BUF_SIZE, NULL);
+        int err = enqueue_avail(&rx_ring_mux, addr, BUF_SIZE, NULL);
+        if (err) {
+            print("COPY INIT: i is: ");
+            puthex64(i);
+            print("\n");
+        }
+        assert(!err);
     }
 
     return;

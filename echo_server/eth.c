@@ -237,7 +237,10 @@ handle_rx(volatile struct enet_regs *eth)
 
         buff_desc_t *desc = (buff_desc_t *)cookie;
 
-        enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
+        int err = enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
+        if (err) {
+            print("ETH|ERROR: Failed to enqueue to RX used ring\n");
+        }
         num++;
     }
 
@@ -301,7 +304,8 @@ complete_tx(volatile struct enet_regs *eth)
             /* give the buffer back */
             buff_desc_t *desc = (buff_desc_t *)cookie;
 
-            enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            int err = enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            assert(!err);
             enqueued++;
         }
     }
