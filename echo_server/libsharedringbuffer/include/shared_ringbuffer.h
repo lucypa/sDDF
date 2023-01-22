@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <sel4cp.h>
+#include "util.h"
 #include "fence.h"
 
 #define SIZE 512
@@ -103,7 +104,7 @@ static inline void notify(ring_handle_t *ring)
 static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int len, void *cookie)
 {
     if (ring_full(ring)) {
-        sel4cp_dbg_puts("ERROR: Attempting to enqueue to full ring\n");
+        print("ERROR: Attempting to enqueue to full ring\n");
         return -1;
     }
 
@@ -130,7 +131,7 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
 static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
     if (ring_empty(ring)) {
-        sel4cp_dbg_puts("ERROR: Attempting to dequeue from empty ring\n");
+        // print("ERROR: Attempting to dequeue from empty ring\n");
         return -1;
     }
 
@@ -157,6 +158,7 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
  */
 static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
+    assert(addr);
     return enqueue(ring->avail_ring, addr, len, cookie);
 }
 
@@ -173,6 +175,7 @@ static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned in
  */
 static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
+    assert(addr);
     return enqueue(ring->used_ring, addr, len, cookie);
 }
 
@@ -188,6 +191,10 @@ static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int
  */
 static inline int dequeue_avail(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
+    if (ring_empty(ring->avail_ring)) {
+        print("ERROR: Attempting to dequeue from empty available ring\n");
+        return -1;
+    }
     return dequeue(ring->avail_ring, addr, len, cookie);
 }
 
@@ -203,6 +210,10 @@ static inline int dequeue_avail(ring_handle_t *ring, uintptr_t *addr, unsigned i
  */
 static inline int dequeue_used(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
+    if (ring_empty(ring->used_ring)) {
+        print("ERROR: Attempting to dequeue from empty used ring\n");
+        return -1;
+    }
     return dequeue(ring->used_ring, addr, len, cookie);
 }
 

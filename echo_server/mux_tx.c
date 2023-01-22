@@ -40,7 +40,10 @@ void process_tx_ready(void)
             print("process_tx_ready dequeue used failed.\n");
             break;
         }
-        enqueue_used(&state.tx_ring_drv, addr, len, cookie);
+        err = enqueue_used(&state.tx_ring_drv, addr, len, cookie);
+        if (err) {
+            print("MUX TX|ERROR: Failed to enqueue to used driver TX ring\n");
+        }
     }
 
     if (was_empty) {
@@ -59,8 +62,10 @@ void process_tx_complete(void)
         uintptr_t addr;
         unsigned int len;
         void *cookie;
-        dequeue_avail(&state.tx_ring_drv, &addr, &len, &cookie);
-        enqueue_avail(&state.tx_ring_clients[0], addr, len, cookie);
+        int err = dequeue_avail(&state.tx_ring_drv, &addr, &len, &cookie);
+        assert(!err);
+        err = enqueue_avail(&state.tx_ring_clients[0], addr, len, cookie);
+        assert(!err);
     }
 }
 
@@ -81,4 +86,3 @@ void init(void)
 
     return;
 }
-

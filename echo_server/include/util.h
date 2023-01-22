@@ -56,3 +56,48 @@ puthex64(uint64_t val)
     }
     print(buffer);
 }
+
+static char
+decchar(unsigned int v) {
+    return '0' + v;
+}
+
+static void
+put8(uint8_t x)
+{
+    char tmp[4];
+    unsigned i = 3;
+    tmp[3] = 0;
+    do {
+        uint8_t c = x % 10;
+        tmp[--i] = decchar(c);
+        x /= 10;
+    } while (x);
+    print(&tmp[i]);
+}
+
+static void _assert_fail(
+    const char  *assertion,
+    const char  *file,
+    unsigned int line,
+    const char  *function)
+{
+    print("Failed assertion '");
+    print(assertion);
+    print("' at ");
+    print(file);
+    print(":");
+    put8(line);
+    print(" in function ");
+    print(function);
+    print("\n");
+    while (1) {}
+}
+
+#define assert(expr) \
+    do { \
+        if (!(expr)) { \
+            _assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__); \
+        } \
+    } while(0)
+
