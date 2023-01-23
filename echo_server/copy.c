@@ -33,8 +33,8 @@ void process_rx_complete(void)
     */
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
-            !ring_empty(rx_ring_mux.avail_ring) &&
-            !ring_empty(rx_ring_cli.used_ring)) {
+            !ring_full(rx_ring_mux.avail_ring) &&
+            !ring_full(rx_ring_cli.used_ring)) {
         uintptr_t m_addr, c_addr = 0;
         unsigned int m_len, c_len = 0;
         void *cookie = NULL;
