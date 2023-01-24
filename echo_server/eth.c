@@ -51,18 +51,32 @@ struct descriptor {
     uint32_t addr;
 };
 
+/*
+ * Housekeeping for NIC ring buffers.
+ * Ring empty = (tail == head)
+ * Ring full = (remain == 0)
+ * Invariants: 0 <= tail < cnt
+ *             0 <= head < cnt
+ *             0 <= remain < cnt - 1
+ *             remain = (tail - head - 2) % cnt
+ *             (tail - head) % cnt >= 2
+ *             descr[head] through desc[tail]
+ *                   are ready to be or have been used for DMA
+ *             descr[(tail + 1) % cnt] through descr[(head - 1) % cnt]
+ *                   are unused.
+ */
 typedef struct {
-    unsigned int cnt;
-    unsigned int remain;
-    unsigned int tail;
-    unsigned int head;
-    volatile struct descriptor *descr;
-    uintptr_t phys;
-    void **cookies;
+    unsigned int cnt;  /* Number of slots in NIC's ring */
+    unsigned int remain; /* number of slots without buffers */
+    unsigned int tail;   /* Next slot to be given a buffer */
+    unsigned int head;   /* (probably) next slot to be filled by DMA */
+    volatile struct descriptor *descr; /* pointer to NIC's ringbuffer */
+    uintptr_t phys;     /* physical address of buffer region. */
+    void **cookies;     /* For client to use */
 } ring_ctx_t;
 
-ring_ctx_t rx;
-ring_ctx_t tx;
+ring_ctx_t rx; /* Rx NIC ring */
+ring_ctx_t tx; /* Tx NIC ring */
 unsigned int tx_lengths[TX_COUNT];
 
 /* Pointers to shared_ringbuffers */
@@ -210,18 +224,22 @@ handle_rx(volatile struct enet_regs *eth)
 {
     ring_ctx_t *ring = &rx;
     unsigned int head = ring->head;
-
-    int num = 1;
+    int max = ring_size(rx_ring.avail_ring);
+    int num = 0;
     int was_empty = ring_empty(rx_ring.used_ring);
-    int one_empty = 0;
 
-    // we don't want to dequeue packets if we have nothing to replace it with
-    while (head != ring->tail && (ring_size(rx_ring.avail_ring) > num)) {
+    /*
+     * Dequeue at most as many packets as we have buffers to replace them with.
+     */
+    while (head != ring->tail && max != num)) {
         volatile struct descriptor *d = &(ring->descr[head]);
 
-        /* If the slot is still marked as empty we are done. */
+        /*
+         * If a slot is still marked as empty we are done.
+         * Still need to signal upstream if
+         * we've dequeued anything.
+         */
         if (d->stat & RXD_EMPTY) {
-            one_empty = 1;
             break;
         }
 
@@ -236,7 +254,6 @@ handle_rx(volatile struct enet_regs *eth)
         ring->remain++;
 
         buff_desc_t *desc = (buff_desc_t *)cookie;
-
         int err = enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
         if (err) {
             print("ETH|ERROR: Failed to enqueue to RX used ring\n");
@@ -244,13 +261,18 @@ handle_rx(volatile struct enet_regs *eth)
         num++;
     }
 
-    /* Notify client (only if we have actually processed a packet and
-    the client hasn't already been notified!) */
-    if (num > 1 && was_empty) {
+    /* Notify client (only if we have actually processed a packet
+     * and  the client hasn't already been notified!)
+     * Driver runs at highest priority, so buffers will be refilled
+     * by caller before the notify causes a context switch.
+     */
+    if (was_empty && num) {
         sel4cp_notify(RX_CH);
-    } else if (num == 1 && one_empty) {
-        // we didn't process any packets because the queues are full
-        // disable irqs.
+    } else if (max == 0) {
+        /*
+         * we didn't process any packets because the queues are full
+         * so disable Rx irqs.
+         */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
 }
@@ -281,7 +303,7 @@ complete_tx(volatile struct enet_regs *eth)
 
         volatile struct descriptor *d = &(ring->descr[head]);
 
-        /* If this buffer was not sent, we can't release any buffer. */
+        /* If this buffer was not sent, we can't release any more buffers */
         if (d->stat & TXD_READY) {
             /* give it another chance */
             if (!(eth->tdar & TDAR_TDAR)) {
@@ -293,7 +315,7 @@ complete_tx(volatile struct enet_regs *eth)
         }
 
         /* Go to next buffer, handle roll-over. */
-        if (++head == TX_COUNT) {
+        if (++head == ring->cnt) {
             head = 0;
         }
 
