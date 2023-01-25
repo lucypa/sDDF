@@ -61,7 +61,7 @@ void process_tx_complete(void)
 {
     bool was_empty = ring_empty(state.tx_ring_clients[0].avail_ring);
     bool enqueued = false;
-    while (!ring_empty(state.tx_ring_drv.avail_ring)) {
+    while (!ring_empty(state.tx_ring_drv.avail_ring) && !ring_full(state.tx_ring_clients[0].avail_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
