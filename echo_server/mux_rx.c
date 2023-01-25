@@ -83,7 +83,7 @@ Loop over driver and insert all used rx buffers to appropriate client queues.
 void process_rx_complete(void)
 {
     int notify_clients[NUM_CLIENTS];
-    bool rx_avail_was_empty = ring_empty(&state.rx_ring_drv);
+    bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
     while(!ring_empty(state.rx_ring_drv.used_ring)) {
         total++;
         uintptr_t addr = 0;
