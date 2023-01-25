@@ -584,6 +584,7 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 
 void notified(sel4cp_channel ch)
 {
+    print("ETH: invoked\n");
     switch(ch) {
         case IRQ_CH:
             handle_eth(eth);

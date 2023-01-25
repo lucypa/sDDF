@@ -188,12 +188,12 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
 
     dequeue_avail(&state->tx_ring, &addr, &len, (void **)&buffer);
     if (!buffer) {
-        print("lwip: dequeued a null ethernet buffer\n");
+        print("LWIP|ERROR: dequeued a null ethernet buffer\n");
         return NULL;
     }
 
     if (addr != buffer->buffer) {
-        print("sanity check failed\n");
+        print("LWIP|ERROR: sanity check failed\n");
     }
 
     return buffer;
@@ -240,7 +240,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     /* insert into the used tx queue */
     err = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
     if (err) {
-        print("LWIP|TX used ring full\n");
+        print("LWIP|ERROR: TX used ring full\n");
         err = enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
         assert(!err);
         return ERR_MEM;
@@ -258,7 +258,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 void process_rx_queue(void)
 {
     sel4cp_dbg_puts("lwip: process_rx_queue\n");
-    while(!ring_empty(state.rx_ring.used_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring)) {
         incoming++;
         uintptr_t addr;
         unsigned int len;
@@ -267,16 +267,17 @@ void process_rx_queue(void)
         dequeue_used(&state.rx_ring, &addr, &len, (void **)&buffer);
 
         if (addr != buffer->buffer) {
-            print("sanity check failed\n");
+            print("LWIP|ERROR: sanity check failed\n");
         }
 
         /* Invalidate the memory */
         int err = seL4_ARM_VSpace_Invalidate_Data(3, buffer->buffer, buffer->buffer + ETHER_MTU);
         if (err) {
-            print("ARM Vspace invalidate failed\n");
+            print("LWIP|ERROR: ARM Vspace invalidate failed\n");
             puthex64(err);
             print("\n");
         }
+        assert(!err);
 
         struct pbuf *p = create_interface_buffer(&state, (void *)buffer, len);
 
@@ -431,6 +432,7 @@ void init(void)
 
 void notified(sel4cp_channel ch)
 {
+    print("LWIP| invoked\n");
     switch(ch) {
         case RX_CH:
             process_rx_queue();

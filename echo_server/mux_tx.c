@@ -79,6 +79,7 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
+    print("MUX|TX: invoked\n");
     static unsigned counter = 0;
     process_tx_ready();
     process_tx_complete();
