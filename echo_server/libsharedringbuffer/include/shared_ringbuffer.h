@@ -236,7 +236,7 @@ static inline int dequeue_used(ring_handle_t *ring, uintptr_t *addr, unsigned in
  */
 static int driver_dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
-    if (!((ring->write_idx - ring->read_idx) % SIZE)) {
+    if (ring_empty(ring)) {
         return -1;
     }
 
