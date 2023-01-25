@@ -137,10 +137,9 @@ void process_rx_free(void)
      * ring was empty, we want to notify the driver. We also only want to
      * notify it once.
      */
-    bool notified_driver = false;
+    bool was_empty = ring_empty(state.rx_ring_drv.avail_ring);
+    bool enqueued = false;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        bool enqueued = false;
-        bool was_empty = ring_empty(state.rx_ring_clients[i].avail_ring);
         while (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
             uintptr_t addr;
             unsigned int len;
@@ -151,13 +150,10 @@ void process_rx_free(void)
             assert(!err);
             enqueued = true;
         }
-
-        if (enqueued && was_empty && !notified_driver) {
-            sel4cp_notify(DRIVER_CH);
-            notified_driver = true;
-        }
     }
-
+    if (enqueued && was_empty) {
+        sel4cp_notify(DRIVER_CH);
+    }
 }
 
 seL4_MessageInfo_t
