@@ -24,7 +24,7 @@ uintptr_t hw_ring_buffer_paddr;
 uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_paddr_rx;
 uintptr_t shared_dma_vaddr_tx;
-vuintptr_t shared_dma_paddr_tx;
+uintptr_t shared_dma_paddr_tx;
 uintptr_t rx_cookies;
 uintptr_t tx_cookies;
 uintptr_t rx_avail;
