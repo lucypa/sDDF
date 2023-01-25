@@ -449,6 +449,7 @@ void notified(sel4cp_channel ch)
             print("\nLwip outgoing: ");
             puthex64(outgoing);
             print("\n");
+            return;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
             break;
