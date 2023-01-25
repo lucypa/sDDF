@@ -69,7 +69,7 @@ void process_tx_complete(void)
         assert(!err);
         err = enqueue_avail(&state.tx_ring_clients[0], addr, len, cookie);
         assert(!err);
-	enqueued = true;
+        enqueued = true;
     }
 
     if (enqueued && was_empty) {
@@ -84,14 +84,14 @@ void notified(sel4cp_channel ch)
     process_tx_complete();
     if (++counter % 0x10000U == 0) {
         print("MUX: client[0].avail ");
-	puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
-	print("\n client[0].used ");
-	puthex64(ring_size(state.tx_ring_clients[0].used_ring));
-	print("\n driver.avail ");
-	puthex64(ring_size(state.tx_ring_drv.avail_ring));
-	print("\n driver.used ");
-	puthex64(ring_size(state.tx_ring_drv.used_ring));
-	print("\n\n");
+        puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+        print("\n client[0].used ");
+        puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+        print("\n driver.avail ");
+        puthex64(ring_size(state.tx_ring_drv.avail_ring));
+        print("\n driver.used ");
+        puthex64(ring_size(state.tx_ring_drv.used_ring));
+        print("\n\n");
     }
 }
 
