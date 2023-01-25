@@ -71,8 +71,16 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
+    static unsigned counter = 0;
     process_tx_ready();
     process_tx_complete();
+    if (++counter % 0x10000U == 0) {
+        print("MUX: client[0].avail %lu\n     client[0].used %lu\n     driver.a ail %lu\n      driver.used %lu\n",
+              ring_size(&state.tx_ring_clients[0].avail),
+              ring_size(&state.tx_ring_clients[0].used),
+              ring_size(&state.tx_ring_drv.avail),
+              ring_size(&state.tx_ring_drv.used));
+    }
 }
 
 void init(void)
