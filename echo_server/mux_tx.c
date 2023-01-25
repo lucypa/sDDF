@@ -75,11 +75,15 @@ void notified(sel4cp_channel ch)
     process_tx_ready();
     process_tx_complete();
     if (++counter % 0x10000U == 0) {
-        print("MUX: client[0].avail %lu\n     client[0].used %lu\n     driver.a ail %lu\n      driver.used %lu\n",
-              ring_size(&state.tx_ring_clients[0].avail),
-              ring_size(&state.tx_ring_clients[0].used),
-              ring_size(&state.tx_ring_drv.avail),
-              ring_size(&state.tx_ring_drv.used));
+        print("MUX: client[0].avail ");
+	puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+	print("\n client[0].used ");
+	puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+	print("\n driver.avail ");
+	puthex64(ring_size(state.tx_ring_drv.avail_ring));
+	print("\n driver.used ");
+	puthex64(ring_size(state.tx_ring_drv.used_ring));
+	print("\n\n");
     }
 }
 
