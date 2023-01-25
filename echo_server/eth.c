@@ -224,14 +224,24 @@ handle_rx(volatile struct enet_regs *eth)
 {
     ring_ctx_t *ring = &rx;
     unsigned int head = ring->head;
-    int max = ring_size(rx_ring.avail_ring);
     int num = 0;
     int was_empty = ring_empty(rx_ring.used_ring);
 
+    if (ring_full(rx_ring.used_ring))
+    {
+        /*
+         * we didn't process any packets because the queues are full
+         * so disable Rx irqs.
+         */
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        return;
+    }
     /*
-     * Dequeue at most as many packets as we have buffers to replace them with.
+     * Dequeue until either:
+     *   we run out of filled buffers in the NIC ring
+     *   we run out of slots in the upstream Rx ring.
      */
-    while (head != ring->tail && max != num)) {
+    while (head != ring->tail && !ring_full(rx_ring.used_ring)) {
         volatile struct descriptor *d = &(ring->descr[head]);
 
         /*
@@ -268,12 +278,6 @@ handle_rx(volatile struct enet_regs *eth)
      */
     if (was_empty && num) {
         sel4cp_notify(RX_CH);
-    } else if (max == 0) {
-        /*
-         * we didn't process any packets because the queues are full
-         * so disable Rx irqs.
-         */
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
 }
 
