@@ -133,8 +133,15 @@ void process_rx_complete(void)
 // Loop over all client rings and return unused rx buffers to the driver
 void process_rx_free(void)
 {
+    /* If we have enqueued to the driver's available ring and the available
+     * ring was empty, we want to notify the driver. We also only want to
+     * notify it once.
+     */
+    bool notified_driver = false;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while(!ring_empty(state.rx_ring_clients[i].avail_ring)) {
+        bool enqueued = false;
+        bool was_empty = ring_empty(state.rx_ring_clients[i].avail_ring);
+        while (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *buffer;
@@ -142,8 +149,15 @@ void process_rx_free(void)
             assert(!err);
             err = enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
             assert(!err);
+            enqueued = true;
+        }
+
+        if (enqueued && was_empty && !notified_driver) {
+            sel4cp_notify(DRIVER_CH);
+            notified_driver = true;
         }
     }
+
 }
 
 seL4_MessageInfo_t
