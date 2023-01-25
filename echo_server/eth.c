@@ -320,11 +320,6 @@ complete_tx(volatile struct enet_regs *eth)
             }
         }
 
-        /* Go to next buffer, handle roll-over. */
-        if (++head == ring->cnt) {
-            head = 0;
-        }
-
         if (0 == --cnt) {
             ring->head = head;
             /* race condition if add/remove is not synchronized. */
@@ -335,6 +330,11 @@ complete_tx(volatile struct enet_regs *eth)
             int err = enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
             assert(!err);
             enqueued++;
+        }
+
+        /* Go to next buffer, handle roll-over. */
+        if (++head == ring->cnt) {
+            head = 0;
         }
     }
 
