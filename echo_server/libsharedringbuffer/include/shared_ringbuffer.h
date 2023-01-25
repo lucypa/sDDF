@@ -72,11 +72,13 @@ static inline int ring_empty(ring_buffer_t *ring)
  */
 static inline int ring_full(ring_buffer_t *ring)
 {
+    assert((ring->write_idx - ring->read_idx) >= 0);
     return !((ring->write_idx - ring->read_idx + 1) % SIZE);
 }
 
 static inline int ring_size(ring_buffer_t *ring)
 {
+    assert((ring->write_idx - ring->read_idx) >= 0);
     return (ring->write_idx - ring->read_idx);
 }
 
@@ -103,6 +105,7 @@ static inline void notify(ring_handle_t *ring)
  */
 static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int len, void *cookie)
 {
+    assert(buffer != 0);
     if (ring_full(ring)) {
         print("ERROR: Attempting to enqueue to full ring\n");
         return -1;
@@ -134,6 +137,8 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         // print("ERROR: Attempting to dequeue from empty ring\n");
         return -1;
     }
+
+    assert(ring->buffers[ring->read_idx % SIZE].encoded_addr != 0);
 
     *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
