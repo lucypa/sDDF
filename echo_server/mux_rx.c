@@ -83,6 +83,7 @@ Loop over driver and insert all used rx buffers to appropriate client queues.
 void process_rx_complete(void)
 {
     int notify_clients[NUM_CLIENTS];
+    bool rx_avail_was_empty = ring_empty(&state.rx_ring_drv);
     while(!ring_empty(state.rx_ring_drv.used_ring)) {
         total++;
         uintptr_t addr = 0;
@@ -127,6 +128,14 @@ void process_rx_complete(void)
         if (notify_clients[client]) {
             sel4cp_notify(client);
         }
+    }
+    /*
+     * Tell the driver if we've added some Rx bufs.
+     * Note this will force a context switch, as the driver runs at higher
+     * priority than the MUX
+     */       
+    if (dropped && rx_avail_was_empty) {
+        sel4cp_notify(DRIVER_CH);
     }
 }
 
