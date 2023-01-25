@@ -10,8 +10,9 @@ uintptr_t tx_used_cli;
 uintptr_t shared_dma_vaddr;
 uintptr_t uart_base;
 
+#define CLIENT_CH 0
 #define NUM_CLIENTS 1
-#define DRIVER_TX_CH 1
+#define DRIVER_CH 1
 
 typedef struct state {
     /* Pointers to shared buffers */
@@ -49,7 +50,7 @@ void process_tx_ready(void)
     if (was_empty) {
         have_signal = true;
         signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_TX_CH);
+        signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
     }
 }
 
@@ -58,6 +59,8 @@ void process_tx_ready(void)
 // this buffer originated from.
 void process_tx_complete(void)
 {
+    bool was_empty = ring_empty(state.tx_ring_clients[0].avail_ring);
+    bool enqueued = false;
     while (!ring_empty(state.tx_ring_drv.avail_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -66,6 +69,11 @@ void process_tx_complete(void)
         assert(!err);
         err = enqueue_avail(&state.tx_ring_clients[0], addr, len, cookie);
         assert(!err);
+	enqueued = true;
+    }
+
+    if (enqueued && was_empty) {
+        sel4cp_notify(CLIENT_CH);
     }
 }
 
