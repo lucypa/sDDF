@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
+# @ivanv: Changes any of the params given e.g SEL4CP_CONFIG,
+# doesn't actually cause a re-compile. We should fix this.
 ifeq ($(strip $(BUILD_DIR)),)
 $(error BUILD_DIR must be specified)
 endif
@@ -20,7 +22,9 @@ ifeq ($(strip $(SEL4CP_CONFIG)),)
 $(error SEL4CP_CONFIG must be specified)
 endif
 
-TOOLCHAIN := aarch64-none-elf
+ifeq ($(strip $(TOOLCHAIN)),)
+	TOOLCHAIN := aarch64-none-elf
+endif
 
 CPU := cortex-a53
 
