@@ -432,7 +432,6 @@ void init(void)
 
 void notified(sel4cp_channel ch)
 {
-    print("LWIP| invoked\n");
     switch(ch) {
         case RX_CH:
             process_rx_queue();

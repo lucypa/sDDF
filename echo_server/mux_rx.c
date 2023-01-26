@@ -189,7 +189,6 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 void notified(sel4cp_channel ch)
 {
     if (initialised) {
-        print("MUX|RX: invoked\n");
         process_rx_complete();
         process_rx_free();
     } else {
