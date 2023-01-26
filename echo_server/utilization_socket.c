@@ -87,7 +87,7 @@ uint64_t idle_overflow_start;
 
 static inline void my_reverse(char s[])
 {
-    int i, j;
+    unsigned int i, j;
     char c;
 
     for (i = 0, j = strlen(s)-1; i<j; i++, j--) {
@@ -99,7 +99,7 @@ static inline void my_reverse(char s[])
 
 static inline void my_itoa(uint64_t n, char s[])
 {
-    int i;
+    unsigned int i;
     uint64_t sign;
 
     if ((sign = n) < 0)  /* record sign */
