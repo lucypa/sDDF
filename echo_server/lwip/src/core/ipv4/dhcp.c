@@ -310,7 +310,6 @@ dhcp_check(struct netif *netif)
   struct dhcp *dhcp = netif_dhcp_data(netif);
   err_t result;
   u16_t msecs;
-  sel4cp_dbg_puts("dhcp_check\n");
   LWIP_DEBUGF(DHCP_DEBUG | LWIP_DBG_TRACE, ("dhcp_check(netif=%p) %c%c\n", (void *)netif, (s16_t)netif->name[0],
               (s16_t)netif->name[1]));
   dhcp_set_state(dhcp, DHCP_STATE_CHECKING);
@@ -319,7 +318,6 @@ dhcp_check(struct netif *netif)
   result = etharp_query(netif, &dhcp->offered_ip_addr, NULL);
   if (result != ERR_OK) {
     LWIP_DEBUGF(DHCP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_WARNING, ("dhcp_check: could not perform ARP query\n"));
-    sel4cp_dbg_puts("dhcp_check could not perform ARP query\n");
   }
   if (dhcp->tries < 255) {
     dhcp->tries++;
@@ -378,8 +376,6 @@ dhcp_select(struct netif *netif)
   u8_t i;
   struct pbuf *p_out;
   u16_t options_out_len;
-
-  sel4cp_dbg_puts("DHCP_select\n");
 
   LWIP_ERROR("dhcp_select: netif != NULL", (netif != NULL), return ERR_ARG;);
   dhcp = netif_dhcp_data(netif);
@@ -996,8 +992,6 @@ dhcp_discover(struct netif *netif)
   struct pbuf *p_out;
   u16_t options_out_len;
 
-  sel4cp_dbg_puts("DHCP discover\n");
-
   LWIP_DEBUGF(DHCP_DEBUG | LWIP_DBG_TRACE, ("dhcp_discover()\n"));
 
   ip4_addr_set_any(&dhcp->offered_ip_addr);
@@ -1050,7 +1044,6 @@ dhcp_discover(struct netif *netif)
 static void
 dhcp_bind(struct netif *netif)
 {
-  sel4cp_dbg_puts("dhcp bind\n");
   u32_t timeout;
   struct dhcp *dhcp;
   ip4_addr_t sn_mask, gw_addr;
