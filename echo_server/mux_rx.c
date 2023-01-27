@@ -126,6 +126,7 @@ void process_rx_complete(void)
     /* Loop over bitmap and see who we need to notify. */
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (notify_clients[client]) {
+            print("MUX RX: notify client\n");
             sel4cp_notify(client);
         }
     }
@@ -133,8 +134,10 @@ void process_rx_complete(void)
      * Tell the driver if we've added some Rx bufs.
      * Note this will force a context switch, as the driver runs at higher
      * priority than the MUX
-     */       
+     */
     if (dropped && rx_avail_was_empty) {
+        print("MUX RX: notify driver\n");
+        // @ivanv: We're potentially notifying again in process_rx_free.
         sel4cp_notify(DRIVER_CH);
     }
 }
@@ -161,6 +164,16 @@ void process_rx_free(void)
         }
     }
     if (enqueued && was_empty) {
+        print("MUX RX: notify driver in process_rx_free\n");
+        print("MUX RX (before notify): client[0].avail ");
+        puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+        print("\n client[0].used ");
+        puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+        print("\n driver.avail ");
+        puthex64(ring_size(state.rx_ring_drv.avail_ring));
+        print("\n driver.used ");
+        puthex64(ring_size(state.rx_ring_drv.used_ring));
+        print("\n\n");
         sel4cp_notify(DRIVER_CH);
     }
 }
@@ -168,29 +181,63 @@ void process_rx_free(void)
 seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
-    if (ch >= NUM_CLIENTS) {
-        sel4cp_dbg_puts("Received ppc on unexpected channel ");
-        puthex64(ch);
-        return sel4cp_msginfo_new(0, 0);
-    }
-    // return the MAC address.
-    uint32_t lower = (state.mac_addrs[ch][0] << 24) |
-                     (state.mac_addrs[ch][1] << 16) |
-                     (state.mac_addrs[ch][2] << 8) |
-                     (state.mac_addrs[ch][3]);
-    uint32_t upper = (state.mac_addrs[ch][4] << 24) | (state.mac_addrs[ch][5] << 16);
-    sel4cp_dbg_puts("Mux rx is sending mac: ");
-    dump_mac(state.mac_addrs[ch]);
-    sel4cp_mr_set(0, lower);
-    sel4cp_mr_set(1, upper);
-    return sel4cp_msginfo_new(0, 2);
+    // if (ch >= NUM_CLIENTS) {
+    //     sel4cp_dbg_puts("Received ppc on unexpected channel ");
+    //     puthex64(ch);
+    //     return sel4cp_msginfo_new(0, 0);
+    // }
+    // // return the MAC address.
+    // uint32_t lower = (state.mac_addrs[ch][0] << 24) |
+    //                  (state.mac_addrs[ch][1] << 16) |
+    //                  (state.mac_addrs[ch][2] << 8) |
+    //                  (state.mac_addrs[ch][3]);
+    // uint32_t upper = (state.mac_addrs[ch][4] << 24) | (state.mac_addrs[ch][5] << 16);
+    // sel4cp_dbg_puts("Mux rx is sending mac: ");
+    // dump_mac(state.mac_addrs[ch]);
+    // sel4cp_mr_set(0, lower);
+    // sel4cp_mr_set(1, upper);
+    // return sel4cp_msginfo_new(0, 2);
+
+    print("MUX RX: rx_avail_drv ");
+    puthex64(ring_size(state.rx_ring_drv.avail_ring));
+    print("\n rx_used_drv ");
+    puthex64(ring_size(state.rx_ring_drv.used_ring));
+    print("\n rx_avail_clients[0] ");
+    puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+    print("\n rx_used_clients[0] ");
+    puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+    print("\n\n");
+    return sel4cp_msginfo_new(0, 0);
 }
 
 void notified(sel4cp_channel ch)
 {
     if (initialised) {
+        static unsigned counter = 0;
+        if (++counter % 0x10000U == 0) {
+            print("MUX RX (BEFORE): client[0].avail ");
+            puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+            print("\n client[0].used ");
+            puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+            print("\n driver.avail ");
+            puthex64(ring_size(state.rx_ring_drv.avail_ring));
+            print("\n driver.used ");
+            puthex64(ring_size(state.rx_ring_drv.used_ring));
+            print("\n\n");
+        }
         process_rx_complete();
         process_rx_free();
+        if (counter % 0x10000U == 0) {
+            print("MUX RX (AFTER): client[0].avail ");
+            puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+            print("\n client[0].used ");
+            puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+            print("\n driver.avail ");
+            puthex64(ring_size(state.rx_ring_drv.avail_ring));
+            print("\n driver.used ");
+            puthex64(ring_size(state.rx_ring_drv.used_ring));
+            print("\n\n");
+        }
     } else {
         process_rx_free();
         sel4cp_notify(DRIVER_CH);
