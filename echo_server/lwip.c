@@ -35,7 +35,6 @@ uintptr_t rx_avail;
 uintptr_t rx_used;
 uintptr_t tx_avail;
 uintptr_t tx_used;
-uintptr_t copy_rx;
 uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
@@ -109,8 +108,15 @@ static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
     the ring should never be full. */
+    bool was_empty = ring_empty(state->rx_ring.avail_ring);
     int err = enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
+    if (was_empty) {
+        // have_signal = true;
+        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
+        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + RX_CH);
+        sel4cp_notify(RX_CH);
+    }
 }
 
 /**
@@ -183,6 +189,23 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
 
     if (ring_empty(state->tx_ring.avail_ring)) {
         print("LWIP|ERROR: TX available ring is empty!\n");
+        print("LWIP: rx_avail ");
+        puthex64(ring_size(state->rx_ring.avail_ring));
+        print("\n rx_used ");
+        puthex64(ring_size(state->rx_ring.used_ring));
+        print("\n tx_avail ");
+        puthex64(ring_size(state->tx_ring.avail_ring));
+        print("\n tx_used ");
+        puthex64(ring_size(state->tx_ring.used_ring));
+        print("\n\n");
+        /* COPY component */
+        sel4cp_ppcall(2, sel4cp_msginfo_new(0, 0));
+        /* MUX TX component */
+        sel4cp_ppcall(3, sel4cp_msginfo_new(0, 0));
+        /* MUX RX component */
+        sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
+        /* DRIVER component */
+        sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
         return NULL;
     }
 
@@ -247,17 +270,55 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     }
 
     /* Notify the server for next time we recv() */
-    have_signal = true;
-    signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-    signal = (BASE_OUTPUT_NOTIFICATION_CAP + TX_CH);
+    // print("LWIP| notify mux_tx!\n");
+    // have_signal = true;
+    // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
+    // signal = (BASE_OUTPUT_NOTIFICATION_CAP + TX_CH);
     /* NOTE: If driver is passive, we want to Call instead. */
-    //sel4cp_notify(TX_CH);
+    // static unsigned counter = 0;
+    // if (++counter % 0x1000U == 0) {
+    //     print("LWIP: rx_avail ");
+    //     puthex64(ring_size(state->rx_ring.avail_ring));
+    //     print("\n rx_used ");
+    //     puthex64(ring_size(state->rx_ring.used_ring));
+    //     print("\n tx_avail ");
+    //     puthex64(ring_size(state->tx_ring.avail_ring));
+    //     print("\n tx_used ");
+    //     puthex64(ring_size(state->tx_ring.used_ring));
+    //     print("\n\n");
+    //     /* COPY component */
+    //     sel4cp_ppcall(2, sel4cp_msginfo_new(0, 0));
+    //     /* MUX TX component */
+    //     sel4cp_ppcall(3, sel4cp_msginfo_new(0, 0));
+    //     /* MUX RX component */
+    //     sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
+    //     /* DRIVER component */
+    //     sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
+    // }
+    sel4cp_notify(TX_CH);
     return ret;
 }
 
 void process_rx_queue(void)
 {
-    sel4cp_dbg_puts("lwip: process_rx_queue\n");
+    // print("lwip: process_rx_queue\n");
+    // print("LWIP: rx_avail ");
+    // puthex64(ring_size(state.rx_ring.avail_ring));
+    // print("\n rx_used ");
+    // puthex64(ring_size(state.rx_ring.used_ring));
+    // print("\n tx_avail ");
+    // puthex64(ring_size(state.tx_ring.avail_ring));
+    // print("\n tx_used ");
+    // puthex64(ring_size(state.tx_ring.used_ring));
+    // print("\n\n");
+    // /* COPY component */
+    // sel4cp_ppcall(2, sel4cp_msginfo_new(0, 0));
+    // /* MUX TX component */
+    // sel4cp_ppcall(3, sel4cp_msginfo_new(0, 0));
+    // /* MUX RX component */
+    // sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
+    // /* DRIVER component */
+    // sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
     while (!ring_empty(state.rx_ring.used_ring)) {
         incoming++;
         uintptr_t addr;

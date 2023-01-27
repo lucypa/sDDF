@@ -77,7 +77,7 @@
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
     </protection_domain>
 
-    <protection_domain name="copy" priority="98" budget="20000" >
+    <protection_domain name="copy" priority="98" budget="20000" pp="true">
         <program_image path="copy.elf" />
         <map mr="shared_dma_rx_cli" vaddr="0x2_800_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_cli" />
         <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_mux" />
@@ -91,7 +91,7 @@
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
     </protection_domain>
 
-    <protection_domain name="mux_tx" priority="100" budget="20000" >
+    <protection_domain name="mux_tx" priority="100" budget="20000" pp="true">
         <program_image path="mux_tx.elf" />
         <!-- shared memory for driver/mux ring buffer mechanism -->
         <map mr="tx_avail_drv" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail_drv" />
@@ -184,4 +184,9 @@
         <end pd="lwip" id="6" />
     </channel>
 
+    <!-- NOTE: this channel is purely for debugging purposes -->
+    <channel>
+        <end pd="lwip" id="10" />
+        <end pd="mux_rx" id="10" />
+    </channel>
 </system>

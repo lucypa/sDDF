@@ -25,7 +25,9 @@ int initialised = 0;
 
 void process_rx_complete(void)
 {
-    sel4cp_dbg_puts("copy: process_rx_complete\n");
+    // print("copy: process_rx_complete\n");
+    bool done_work = false;
+    bool mux_was_full = ring_full(rx_ring_mux.used_ring);
     int was_empty = ring_empty(rx_ring_cli.used_ring);
     /* We only want to copy buffers if meet both conditions:
        1. There are buffers from the mux to copy to.
@@ -78,14 +80,36 @@ void process_rx_complete(void)
         /* enqueue the old buffer back to dev_rx_ring.avail so the driver can use it again. */
         err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
         assert(!err);
+
+        done_work = true;
     }
 
-    if (was_empty) {
+    if (was_empty && done_work) {
         // @ivanv: this should be an sel4cp syscall rather than dealing with these globals in user code
-        have_signal = true;
-        signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
+        // have_signal = true;
+        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
+        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
+        sel4cp_notify(CLIENT_CH);
     }
+
+    if (mux_was_full && done_work) {
+        sel4cp_notify(MUX_RX_CH);
+    }
+}
+
+seL4_MessageInfo_t
+protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
+{
+    print("COPY: rx_avail_mux ");
+    puthex64(ring_size(rx_ring_mux.avail_ring));
+    print("\n rx_used_mux ");
+    puthex64(ring_size(rx_ring_mux.used_ring));
+    print("\n rx_avail_cli ");
+    puthex64(ring_size(rx_ring_cli.avail_ring));
+    print("\n rx_used_cli ");
+    puthex64(ring_size(rx_ring_cli.used_ring));
+    print("\n\n");
+    return sel4cp_msginfo_new(0, 0);
 }
 
 void notified(sel4cp_channel ch)

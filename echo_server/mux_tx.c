@@ -28,7 +28,7 @@ TODO: Put client prioritisation in here.
 */
 void process_tx_ready(void)
 {
-    // @ivanv: should this be in the loop?
+    bool done_work = false;
     bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
 
     while(!ring_empty(state.tx_ring_clients[0].used_ring)) {
@@ -45,12 +45,14 @@ void process_tx_ready(void)
         if (err) {
             print("MUX TX|ERROR: Failed to enqueue to used driver TX ring\n");
         }
+        done_work = true;
     }
 
-    if (was_empty) {
-        have_signal = true;
-        signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
+    if (was_empty && done_work) {
+        // have_signal = true;
+        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
+        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
+        sel4cp_notify(DRIVER_CH);
     }
 }
 
@@ -73,6 +75,7 @@ void process_tx_complete(void)
     }
 
     if (enqueued && was_empty) {
+        print("MUX TX notifying client\n");
         sel4cp_notify(CLIENT_CH);
     }
 }
@@ -80,10 +83,8 @@ void process_tx_complete(void)
 void notified(sel4cp_channel ch)
 {
     static unsigned counter = 0;
-    process_tx_ready();
-    process_tx_complete();
-    if (++counter % 0x10000U == 0) {
-        print("MUX: client[0].avail ");
+    if (++counter % 0x100U == 0) {
+        print("MUX TX (BEFORE): client[0].avail ");
         puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
         print("\n client[0].used ");
         puthex64(ring_size(state.tx_ring_clients[0].used_ring));
@@ -93,6 +94,34 @@ void notified(sel4cp_channel ch)
         puthex64(ring_size(state.tx_ring_drv.used_ring));
         print("\n\n");
     }
+    process_tx_ready();
+    process_tx_complete();
+    if (counter % 0x100U == 0) {
+        print("MUX TX (AFTER): client[0].avail ");
+        puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+        print("\n client[0].used ");
+        puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+        print("\n driver.avail ");
+        puthex64(ring_size(state.tx_ring_drv.avail_ring));
+        print("\n driver.used ");
+        puthex64(ring_size(state.tx_ring_drv.used_ring));
+        print("\n\n");
+    }
+}
+
+seL4_MessageInfo_t
+protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
+{
+    print("MUX TX: tx_avail_drv ");
+    puthex64(ring_size(state.tx_ring_drv.avail_ring));
+    print("\n tx_used_drv ");
+    puthex64(ring_size(state.tx_ring_drv.used_ring));
+    print("\n tx_avail_clients[0] ");
+    puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+    print("\n tx_used_clients[0] ");
+    puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+    print("\n\n");
+    return sel4cp_msginfo_new(0, 0);
 }
 
 void init(void)

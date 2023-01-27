@@ -182,7 +182,7 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     /* Try to grab a buffer from the available ring */
     if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
         // print("RX Available ring is empty\n");
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        // enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
         return 0;
     }
 
@@ -218,6 +218,8 @@ static void fill_rx_bufs()
     if (ring->tail != ring->head) {
         /* Make sure rx is enabled */
         eth->rdar = RDAR_RDAR;
+    } else {
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
 }
 
@@ -565,20 +567,31 @@ void init(void)
 seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
-    switch (ch) {
-        case INIT:
-            // return the MAC address.
-            sel4cp_mr_set(0, eth->palr);
-            sel4cp_mr_set(1, eth->paur);
-            return sel4cp_msginfo_new(0, 2);
-        case TX_CH:
-            handle_tx(eth);
-            break;
-        default:
-            sel4cp_dbg_puts("Received ppc on unexpected channel ");
-            puthex64(ch);
-            break;
-    }
+    // switch (ch) {
+    //     case INIT:
+    //         // return the MAC address.
+    //         sel4cp_mr_set(0, eth->palr);
+    //         sel4cp_mr_set(1, eth->paur);
+    //         return sel4cp_msginfo_new(0, 2);
+    //     case TX_CH:
+    //         handle_tx(eth);
+    //         break;
+    //     default:
+    //         sel4cp_dbg_puts("Received ppc on unexpected channel ");
+    //         puthex64(ch);
+    //         break;
+    // }
+    // return sel4cp_msginfo_new(0, 0);
+
+    print("ETH DRIVER: rx_ring.avail_ring ");
+    puthex64(ring_size(rx_ring.avail_ring));
+    print("\n rx_ring.used_ring ");
+    puthex64(ring_size(rx_ring.used_ring));
+    print("\n tx_ring.avail_ring ");
+    puthex64(ring_size(tx_ring.avail_ring));
+    print("\n tx_ring.used_ring ");
+    puthex64(ring_size(tx_ring.used_ring));
+    print("\n\n");
     return sel4cp_msginfo_new(0, 0);
 }
 
@@ -587,9 +600,10 @@ void notified(sel4cp_channel ch)
     switch(ch) {
         case IRQ_CH:
             handle_eth(eth);
-            have_signal = true;
-            signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
-            signal = (BASE_IRQ_CAP + IRQ_CH);
+            // have_signal = true;
+            // signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
+            // signal = (BASE_IRQ_CAP + IRQ_CH);
+            sel4cp_irq_ack(IRQ_CH);
             break;
         case RX_CH:
             if (initialised) {
