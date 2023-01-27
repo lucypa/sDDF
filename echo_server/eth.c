@@ -182,7 +182,6 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     /* Try to grab a buffer from the available ring */
     if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
         // print("RX Available ring is empty\n");
-        // enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
         return 0;
     }
 
@@ -272,6 +271,7 @@ handle_rx(volatile struct enet_regs *eth)
         if (err) {
             print("ETH|ERROR: Failed to enqueue to RX used ring\n");
         }
+        assert(!err);
         num++;
     }
 
@@ -281,6 +281,10 @@ handle_rx(volatile struct enet_regs *eth)
      * by caller before the notify causes a context switch.
      */
     if (was_empty && num) {
+        assert(!ring_empty(rx_ring.used_ring));
+        print("ETH| rx_ring.used_ring: \n");
+        puthex64(ring_size(rx_ring.used_ring));
+        print("\n");
         sel4cp_notify(RX_CH);
     }
 }
@@ -600,10 +604,9 @@ void notified(sel4cp_channel ch)
     switch(ch) {
         case IRQ_CH:
             handle_eth(eth);
-            // have_signal = true;
-            // signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
-            // signal = (BASE_IRQ_CAP + IRQ_CH);
-            sel4cp_irq_ack(IRQ_CH);
+            have_signal = true;
+            signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
+            signal = (BASE_IRQ_CAP + IRQ_CH);
             break;
         case RX_CH:
             if (initialised) {

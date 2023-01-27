@@ -28,11 +28,31 @@ void process_rx_complete(void)
     // print("copy: process_rx_complete\n");
     bool done_work = false;
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
+    bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
     int was_empty = ring_empty(rx_ring_cli.used_ring);
     /* We only want to copy buffers if meet both conditions:
        1. There are buffers from the mux to copy to.
        2. There are buffers from the client to copy.
     */
+    int processed = 0;
+    if (!(!ring_empty(rx_ring_mux.used_ring) &&
+            !ring_empty(rx_ring_cli.avail_ring) &&
+            !ring_full(rx_ring_mux.avail_ring) &&
+            !ring_full(rx_ring_cli.used_ring))) {
+
+        if (ring_empty(rx_ring_mux.used_ring)) {
+            print("COPY| cond 1 failed");
+        }
+        if (ring_empty(rx_ring_cli.avail_ring)) {
+            print("COPY| cond 2 failed");
+        }
+        if (ring_full(rx_ring_mux.avail_ring)) {
+            print("COPY| cond 3 failed");
+        }
+        if (ring_full(rx_ring_cli.used_ring)) {
+            print("COPY| cond 4 failed");
+        }
+    }
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
             !ring_full(rx_ring_mux.avail_ring) &&
@@ -80,8 +100,11 @@ void process_rx_complete(void)
         /* enqueue the old buffer back to dev_rx_ring.avail so the driver can use it again. */
         err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
         assert(!err);
+        assert(!ring_empty(rx_ring_mux.avail_ring));
 
         done_work = true;
+
+        processed += 1;
     }
 
     if (was_empty && done_work) {
@@ -89,12 +112,26 @@ void process_rx_complete(void)
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
+        // print("COPY| notifying lwip\n");
         sel4cp_notify(CLIENT_CH);
+    } else {
+        // if (was_empty) {
+        //     print("COPY| was_empty is true!\n");
+        // }
+        // if (done_work) {
+        //     print("COPY| done work!\n");
+        // }
     }
 
-    if (mux_was_full && done_work) {
+    if ((mux_was_full || mux_avail_was_empty) && done_work) {
+        assert(!ring_empty(rx_ring_mux.avail_ring));
+        // print("COPY| notifying mux_rx!\n");
         sel4cp_notify(MUX_RX_CH);
     }
+
+    // print("COPY| processed ");
+    // puthex64(processed);
+    // print("\n");
 }
 
 seL4_MessageInfo_t
@@ -123,6 +160,19 @@ void notified(sel4cp_channel ch)
         return;
     }
     // we have one job.
+    if (ch == CLIENT_CH) {
+        assert(!ring_empty(rx_ring_cli.avail_ring));
+    } else if (ch == MUX_RX_CH) {
+        assert(!ring_empty(rx_ring_mux.used_ring));
+        // if (!ring_empty(rx_ring_mux.used_ring)) {
+        //     print("COPY| size of rx_ring_cli.used_ring: ");
+        //     puthex64(ring_size(rx_ring_cli.used_ring));
+        //     print()
+        // }
+    } else {
+        print("COPY| unexpected notification!\n");
+        assert(0);
+    }
     process_rx_complete();
 }
 
@@ -130,7 +180,8 @@ void init(void)
 {
     print("COPY: init started\n");
     /* Set up shared memory regions */
-    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 0);
+    // @ivanv: Having asynchronous initialisation is extremely fragile, we need to find a better way.
+    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 1);
     ring_init(&rx_ring_cli, (ring_buffer_t *)rx_avail_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
 
     /* Enqueue available buffers for the mux to access */

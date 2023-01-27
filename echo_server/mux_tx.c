@@ -31,6 +31,7 @@ void process_tx_ready(void)
     bool done_work = false;
     bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
 
+    // @ivanv: should check that driver TX ring has room
     while(!ring_empty(state.tx_ring_clients[0].used_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -83,7 +84,7 @@ void process_tx_complete(void)
 void notified(sel4cp_channel ch)
 {
     static unsigned counter = 0;
-    if (++counter % 0x100U == 0) {
+    if (++counter % 0x10000U == 0) {
         print("MUX TX (BEFORE): client[0].avail ");
         puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
         print("\n client[0].used ");
@@ -96,7 +97,7 @@ void notified(sel4cp_channel ch)
     }
     process_tx_ready();
     process_tx_complete();
-    if (counter % 0x100U == 0) {
+    if (counter % 0x10000U == 0) {
         print("MUX TX (AFTER): client[0].avail ");
         puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
         print("\n client[0].used ");

@@ -12,6 +12,8 @@ uintptr_t shared_dma_vaddr;
 uintptr_t uart_base;
 
 #define NUM_CLIENTS 1
+
+#define COPY_CH 0
 /* Channel ID for driver, only used for initialisation. */
 #define DRIVER_CH 1
 
@@ -82,9 +84,10 @@ Loop over driver and insert all used rx buffers to appropriate client queues.
 */
 void process_rx_complete(void)
 {
-    int notify_clients[NUM_CLIENTS];
+    print("MUX| rx complete\n");
+    int notify_clients[NUM_CLIENTS] = {0};
     bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
-    while(!ring_empty(state.rx_ring_drv.used_ring)) {
+    while (!ring_empty(state.rx_ring_drv.used_ring)) {
         total++;
         uintptr_t addr = 0;
         unsigned int len = 0;
@@ -100,13 +103,18 @@ void process_rx_complete(void)
 
         // Get MAC address and work out which client it is.
         int client = get_client(addr);
+        // @ivanv: should check that there is space before enqueueing?
         if (client >= 0) {
             /* enqueue it. */
             int was_empty = ring_empty(state.rx_ring_clients[client].used_ring);
             int err = enqueue_used(&state.rx_ring_clients[client], addr, len, cookie);
+            assert(!err);
             if (err) {
                 print("Mux_rx enqueue used failed. Ring full\n");
             }
+            /* We don't want to signal the copier until we know there is something
+               in the used ring and the avail ring is also not empty. */
+            assert(!ring_empty(state.rx_ring_clients[client].used_ring));
             if (was_empty) {
                 notify_clients[client] = 1;
             }
@@ -126,6 +134,8 @@ void process_rx_complete(void)
     /* Loop over bitmap and see who we need to notify. */
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (notify_clients[client]) {
+            // assert(!ring_empty(state.rx_ring_clients[client].avail_ring));
+            assert(!ring_empty(state.rx_ring_clients[client].used_ring));
             print("MUX RX: notify client\n");
             sel4cp_notify(client);
         }
@@ -164,16 +174,17 @@ void process_rx_free(void)
         }
     }
     if (enqueued && was_empty) {
-        print("MUX RX: notify driver in process_rx_free\n");
-        print("MUX RX (before notify): client[0].avail ");
-        puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-        print("\n client[0].used ");
-        puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-        print("\n driver.avail ");
-        puthex64(ring_size(state.rx_ring_drv.avail_ring));
-        print("\n driver.used ");
-        puthex64(ring_size(state.rx_ring_drv.used_ring));
-        print("\n\n");
+        // print("MUX RX: notify driver in process_rx_free\n");
+        // print("MUX RX (before notify): client[0].avail ");
+        // puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+        // print("\n client[0].used ");
+        // puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+        // print("\n driver.avail ");
+        // puthex64(ring_size(state.rx_ring_drv.avail_ring));
+        // print("\n driver.used ");
+        // puthex64(ring_size(state.rx_ring_drv.used_ring));
+        // print("\n\n");
+        print("MUX|RX: notifying driver!\n");
         sel4cp_notify(DRIVER_CH);
     }
 }
@@ -213,6 +224,20 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 void notified(sel4cp_channel ch)
 {
     if (initialised) {
+        if (ch == COPY_CH) {
+            // We should only be notified by the copy component
+            // if there is something placed in the available ring.
+            // assert(!ring_empty(state.rx_ring_clients[0].avail_ring));
+        } else if (ch == DRIVER_CH) {
+            if (ring_empty(state.rx_ring_drv.used_ring)) {
+                print("MUX| rx_ring_drv.used_ring size: ");
+                puthex64(ring_size(state.rx_ring_drv.used_ring));
+                print("\n");
+            }
+            assert(!ring_empty(state.rx_ring_drv.used_ring));
+        } else {
+            print("MUX RX: unexpected notification!\n");
+        }
         static unsigned counter = 0;
         if (++counter % 0x10000U == 0) {
             print("MUX RX (BEFORE): client[0].avail ");

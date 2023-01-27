@@ -109,12 +109,13 @@ static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
     /* As the rx_available ring is the size of the number of buffers we have,
     the ring should never be full. */
     bool was_empty = ring_empty(state->rx_ring.avail_ring);
-    int err = enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    int err = enqueue_avail(&state->rx_ring, buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
     if (was_empty) {
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + RX_CH);
+        print("LWIP| notify copy!\n");
         sel4cp_notify(RX_CH);
     }
 }
@@ -319,6 +320,7 @@ void process_rx_queue(void)
     // sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
     // /* DRIVER component */
     // sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
+    int count = 0;
     while (!ring_empty(state.rx_ring.used_ring)) {
         incoming++;
         uintptr_t addr;
@@ -347,7 +349,13 @@ void process_rx_queue(void)
             print("netif.input() != ERR_OK");
             pbuf_free(p);
         }
+
+        count += 1;
     }
+
+    // print("LWIP| processed ");
+    // puthex64(incoming);
+    // print("\n");
 }
 
 /**
@@ -495,6 +503,9 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case RX_CH:
+            // If we've been notified by the COPY component, we should
+            // have something to consume in the available ring.
+            // assert(!ring_empty(state.rx_ring.used_ring));
             process_rx_queue();
             return;
         case INIT:
