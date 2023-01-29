@@ -217,6 +217,8 @@ static void fill_rx_bufs()
     if (ring->tail != ring->head) {
         /* Make sure rx is enabled */
         eth->rdar = RDAR_RDAR;
+        if (!(irq_mask & NETIRQ_RXF))
+            enable_irqs(IRQ_MASK);
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
