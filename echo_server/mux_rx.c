@@ -76,25 +76,33 @@ int get_client(uintptr_t dma_vaddr) {
             return 0;
         }
     }
-    return -1;
+    // @ivanv: we return 0 just for safety, deal with this later.
+    return 0;
 }
+
+static uint64_t ring_size_before = 0;
+static uint64_t ring_size_after = 0;
 
 /*
 Loop over driver and insert all used rx buffers to appropriate client queues.
 */
-void process_rx_complete(void)
+bool process_rx_complete(void)
 {
-    print("MUX| rx complete\n");
+    bool done_work = false;
+    // print("MUX| rx complete\n");
     int notify_clients[NUM_CLIENTS] = {0};
     bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
+        // ring_size_after = ring_size(state.rx_ring_drv.used_ring);
+
         total++;
         uintptr_t addr = 0;
         unsigned int len = 0;
         void *cookie = NULL;
 
-        dequeue_used(&state.rx_ring_drv, &addr, &len, &cookie);
-        int err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
+        int err = dequeue_used(&state.rx_ring_drv, &addr, &len, &cookie);
+        assert(!err);
+        err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
         if (err) {
             print("ARM Vspace invalidate failed\n");
             puthex64(err);
@@ -129,6 +137,8 @@ void process_rx_complete(void)
             }
             dropped++;
         }
+
+        done_work = true;
     }
 
     /* Loop over bitmap and see who we need to notify. */
@@ -136,7 +146,8 @@ void process_rx_complete(void)
         if (notify_clients[client]) {
             // assert(!ring_empty(state.rx_ring_clients[client].avail_ring));
             assert(!ring_empty(state.rx_ring_clients[client].used_ring));
-            print("MUX RX: notify client\n");
+            // print("MUX RX: notify client\n");
+            done_work = true;
             sel4cp_notify(client);
         }
     }
@@ -146,14 +157,16 @@ void process_rx_complete(void)
      * priority than the MUX
      */
     if (dropped && rx_avail_was_empty) {
-        print("MUX RX: notify driver\n");
         // @ivanv: We're potentially notifying again in process_rx_free.
+        done_work = true;
         sel4cp_notify(DRIVER_CH);
     }
+
+    return done_work;
 }
 
 // Loop over all client rings and return unused rx buffers to the driver
-void process_rx_free(void)
+bool process_rx_free(void)
 {
     /* If we have enqueued to the driver's available ring and the available
      * ring was empty, we want to notify the driver. We also only want to
@@ -184,9 +197,11 @@ void process_rx_free(void)
         // print("\n driver.used ");
         // puthex64(ring_size(state.rx_ring_drv.used_ring));
         // print("\n\n");
-        print("MUX|RX: notifying driver!\n");
+        // print("MUX|RX: notifying driver!\n");
         sel4cp_notify(DRIVER_CH);
     }
+
+    return enqueued;
 }
 
 seL4_MessageInfo_t
@@ -229,12 +244,21 @@ void notified(sel4cp_channel ch)
             // if there is something placed in the available ring.
             // assert(!ring_empty(state.rx_ring_clients[0].avail_ring));
         } else if (ch == DRIVER_CH) {
-            if (ring_empty(state.rx_ring_drv.used_ring)) {
-                print("MUX| rx_ring_drv.used_ring size: ");
-                puthex64(ring_size(state.rx_ring_drv.used_ring));
-                print("\n");
-            }
-            assert(!ring_empty(state.rx_ring_drv.used_ring));
+            // if (ring_empty(state.rx_ring_drv.used_ring)) {
+            //     print("MUX| rx_ring_drv.used_ring size: ");
+            //     puthex64(ring_size(state.rx_ring_drv.used_ring));
+            //     print("\n");
+            // }
+            // if (ring_empty(state.rx_ring_drv.used_ring)) {
+            //     print("assert went off!\n");
+            //     print("write_idx: ");
+            //     puthex64(state.rx_ring_drv.used_ring->write_idx);
+            //     print(" read_idx: ");
+            //     puthex64(state.rx_ring_drv.used_ring->read_idx);
+            //     print("\n");
+            // }
+            // assert(!ring_empty(state.rx_ring_drv.used_ring));
+            // ring_size_before = ring_size(satte.rx_ring_drv.used_ring);
         } else {
             print("MUX RX: unexpected notification!\n");
         }
@@ -250,8 +274,17 @@ void notified(sel4cp_channel ch)
             puthex64(ring_size(state.rx_ring_drv.used_ring));
             print("\n\n");
         }
-        process_rx_complete();
-        process_rx_free();
+        bool complete_done_work = process_rx_complete();
+        bool free_done_work = process_rx_free();
+        if (!complete_done_work && !free_done_work) {
+            // print("MUX RX| no work done ");
+            // if (ch == COPY_CH) {
+            //     print("from copy\n");
+            // }
+            // if (ch == DRIVER_CH) {
+            //     print("from driver\n");
+            // }
+        }
         if (counter % 0x10000U == 0) {
             print("MUX RX (AFTER): client[0].avail ");
             puthex64(ring_size(state.rx_ring_clients[0].avail_ring));

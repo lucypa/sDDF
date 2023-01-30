@@ -26,7 +26,7 @@ state_t state;
 Loop over all used tx buffers in client queues and enqueue to driver.
 TODO: Put client prioritisation in here.
 */
-void process_tx_ready(void)
+bool process_tx_ready(void)
 {
     bool done_work = false;
     bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
@@ -55,12 +55,14 @@ void process_tx_ready(void)
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
         sel4cp_notify(DRIVER_CH);
     }
+
+    return done_work;
 }
 
 // Return available tx buffers to clients.
 // TODO: We need a way of knowing which client
 // this buffer originated from.
-void process_tx_complete(void)
+bool process_tx_complete(void)
 {
     bool was_empty = ring_empty(state.tx_ring_clients[0].avail_ring);
     bool enqueued = false;
@@ -79,6 +81,8 @@ void process_tx_complete(void)
         print("MUX TX notifying client\n");
         sel4cp_notify(CLIENT_CH);
     }
+
+    return enqueued;
 }
 
 void notified(sel4cp_channel ch)
@@ -95,8 +99,11 @@ void notified(sel4cp_channel ch)
         puthex64(ring_size(state.tx_ring_drv.used_ring));
         print("\n\n");
     }
-    process_tx_ready();
-    process_tx_complete();
+    bool complete_done_work = process_tx_complete();
+    bool ready_done_work = process_tx_ready();
+    if (!ready_done_work && !complete_done_work) {
+        // print("MUX TX| no work done!\n");
+    }
     if (counter % 0x10000U == 0) {
         print("MUX TX (AFTER): client[0].avail ");
         puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
