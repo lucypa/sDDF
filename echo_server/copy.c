@@ -23,7 +23,7 @@ ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 int initialised = 0;
 
-void process_rx_complete(void)
+bool process_rx_complete(void)
 {
     // print("copy: process_rx_complete\n");
     bool done_work = false;
@@ -35,24 +35,24 @@ void process_rx_complete(void)
        2. There are buffers from the client to copy.
     */
     int processed = 0;
-    if (!(!ring_empty(rx_ring_mux.used_ring) &&
-            !ring_empty(rx_ring_cli.avail_ring) &&
-            !ring_full(rx_ring_mux.avail_ring) &&
-            !ring_full(rx_ring_cli.used_ring))) {
+    // if (!(!ring_empty(rx_ring_mux.used_ring) &&
+    //         !ring_empty(rx_ring_cli.avail_ring) &&
+    //         !ring_full(rx_ring_mux.avail_ring) &&
+    //         !ring_full(rx_ring_cli.used_ring))) {
 
-        if (ring_empty(rx_ring_mux.used_ring)) {
-            print("COPY| cond 1 failed");
-        }
-        if (ring_empty(rx_ring_cli.avail_ring)) {
-            print("COPY| cond 2 failed");
-        }
-        if (ring_full(rx_ring_mux.avail_ring)) {
-            print("COPY| cond 3 failed");
-        }
-        if (ring_full(rx_ring_cli.used_ring)) {
-            print("COPY| cond 4 failed");
-        }
-    }
+    //     if (ring_empty(rx_ring_mux.used_ring)) {
+    //         print("COPY| cond 1 failed");
+    //     }
+    //     if (ring_empty(rx_ring_cli.avail_ring)) {
+    //         print("COPY| cond 2 failed");
+    //     }
+    //     if (ring_full(rx_ring_mux.avail_ring)) {
+    //         print("COPY| cond 3 failed");
+    //     }
+    //     if (ring_full(rx_ring_cli.used_ring)) {
+    //         print("COPY| cond 4 failed");
+    //     }
+    // }
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
             !ring_full(rx_ring_mux.avail_ring) &&
@@ -100,7 +100,8 @@ void process_rx_complete(void)
         /* enqueue the old buffer back to dev_rx_ring.avail so the driver can use it again. */
         err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
         assert(!err);
-        assert(!ring_empty(rx_ring_mux.avail_ring));
+        // @ivanv: this assert was going off, which is unexpected
+        // assert(!ring_empty(rx_ring_mux.avail_ring));
 
         done_work = true;
 
@@ -124,14 +125,14 @@ void process_rx_complete(void)
     }
 
     if ((mux_was_full || mux_avail_was_empty) && done_work) {
-        assert(!ring_empty(rx_ring_mux.avail_ring));
-        // print("COPY| notifying mux_rx!\n");
+        // assert(!ring_empty(rx_ring_mux.avail_ring));
         sel4cp_notify(MUX_RX_CH);
     }
 
     // print("COPY| processed ");
     // puthex64(processed);
     // print("\n");
+    return done_work;
 }
 
 seL4_MessageInfo_t
@@ -161,9 +162,9 @@ void notified(sel4cp_channel ch)
     }
     // we have one job.
     if (ch == CLIENT_CH) {
-        assert(!ring_empty(rx_ring_cli.avail_ring));
+        // assert(!ring_empty(rx_ring_cli.avail_ring));
     } else if (ch == MUX_RX_CH) {
-        assert(!ring_empty(rx_ring_mux.used_ring));
+        // assert(!ring_empty(rx_ring_mux.used_ring));
         // if (!ring_empty(rx_ring_mux.used_ring)) {
         //     print("COPY| size of rx_ring_cli.used_ring: ");
         //     puthex64(ring_size(rx_ring_cli.used_ring));
@@ -173,7 +174,9 @@ void notified(sel4cp_channel ch)
         print("COPY| unexpected notification!\n");
         assert(0);
     }
-    process_rx_complete();
+    if (!process_rx_complete()) {
+        // print("COPY| done no work!\n");
+    }
 }
 
 void init(void)

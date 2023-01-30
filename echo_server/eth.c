@@ -89,6 +89,8 @@ static uint8_t mac[6];
 volatile struct enet_regs *eth = (void *)(uintptr_t)0x2000000;
 uint32_t irq_mask = IRQ_MASK;
 
+static void complete_tx(volatile struct enet_regs *eth);
+
 static void get_mac_addr(volatile struct enet_regs *reg, uint8_t *mac)
 {
     uint32_t l, h;
@@ -218,7 +220,7 @@ static void fill_rx_bufs()
         /* Make sure rx is enabled */
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
-            enable_irqs(IRQ_MASK);
+            enable_irqs(eth, IRQ_MASK);
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
@@ -284,10 +286,75 @@ handle_rx(volatile struct enet_regs *eth)
      */
     if (was_empty && num) {
         assert(!ring_empty(rx_ring.used_ring));
-        print("ETH| rx_ring.used_ring: \n");
-        puthex64(ring_size(rx_ring.used_ring));
-        print("\n");
+        // print("ETH| rx_ring.used_ring: not empty\n");
+        // puthex64(ring_size(rx_ring.used_ring));
+        // print("\n");
         sel4cp_notify(RX_CH);
+    }
+}
+
+static void
+raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
+                  unsigned int *len, void *cookie)
+{
+    ring_ctx_t *ring = &tx;
+
+    /* Ensure we have room */
+    if (ring->remain < num) {
+        /* not enough room, try to complete some and check again */
+        complete_tx(eth);
+        unsigned int rem = ring->remain;
+        if (rem < num) {
+            print("TX queue lacks space");
+            return;
+        }
+    }
+
+    __sync_synchronize();
+
+    unsigned int tail = ring->tail;
+    unsigned int tail_new = tail;
+
+    unsigned int i = num;
+    while (i-- > 0) {
+        uint16_t stat = TXD_READY;
+        if (0 == i) {
+            stat |= TXD_ADDCRC | TXD_LAST;
+        }
+
+        unsigned int idx = tail_new;
+        if (++tail_new == TX_COUNT) {
+            tail_new = 0;
+            stat |= WRAP;
+        }
+        update_ring_slot(ring, idx, *phys++, *len++, stat);
+    }
+
+    ring->cookies[tail] = cookie;
+    tx_lengths[tail] = num;
+    ring->tail = tail_new;
+    /* There is a race condition here if add/remove is not synchronized. */
+    ring->remain -= num;
+
+    __sync_synchronize();
+
+    if (!(eth->tdar & TDAR_TDAR)) {
+        eth->tdar = TDAR_TDAR;
+    }
+
+}
+
+static void
+handle_tx(volatile struct enet_regs *eth)
+{
+    uintptr_t buffer = 0;
+    unsigned int len = 0;
+    void *cookie = NULL;
+
+    // We need to put in an empty condition here.
+    while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+        uintptr_t phys = get_phys_addr(buffer, 1);
+        raw_tx(eth, 1, &phys, &len, cookie);
     }
 }
 
@@ -346,6 +413,10 @@ complete_tx(volatile struct enet_regs *eth)
         }
     }
 
+    if (!ring_empty(tx_ring.used_ring)) {
+        handle_tx(eth);
+    }
+
     if (was_empty && enqueued) {
         sel4cp_notify(TX_CH);
     }
@@ -357,57 +428,6 @@ complete_tx(volatile struct enet_regs *eth)
     if (0 != cnt) {
         // print("head reached tail, but cnt!= 0");
     }
-}
-
-static void
-raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
-                  unsigned int *len, void *cookie)
-{
-    ring_ctx_t *ring = &tx;
-
-    /* Ensure we have room */
-    if (ring->remain < num) {
-        /* not enough room, try to complete some and check again */
-        complete_tx(eth);
-        unsigned int rem = ring->remain;
-        if (rem < num) {
-            print("TX queue lacks space");
-            return;
-        }
-    }
-
-    __sync_synchronize();
-
-    unsigned int tail = ring->tail;
-    unsigned int tail_new = tail;
-
-    unsigned int i = num;
-    while (i-- > 0) {
-        uint16_t stat = TXD_READY;
-        if (0 == i) {
-            stat |= TXD_ADDCRC | TXD_LAST;
-        }
-
-        unsigned int idx = tail_new;
-        if (++tail_new == TX_COUNT) {
-            tail_new = 0;
-            stat |= WRAP;
-        }
-        update_ring_slot(ring, idx, *phys++, *len++, stat);
-    }
-
-    ring->cookies[tail] = cookie;
-    tx_lengths[tail] = num;
-    ring->tail = tail_new;
-    /* There is a race condition here if add/remove is not synchronized. */
-    ring->remain -= num;
-
-    __sync_synchronize();
-
-    if (!(eth->tdar & TDAR_TDAR)) {
-        eth->tdar = TDAR_TDAR;
-    }
-
 }
 
 static void
@@ -431,20 +451,6 @@ handle_eth(volatile struct enet_regs *eth)
         }
         e = eth->eir & irq_mask;
         eth->eir = e;
-    }
-}
-
-static void
-handle_tx(volatile struct enet_regs *eth)
-{
-    uintptr_t buffer = 0;
-    unsigned int len = 0;
-    void *cookie = NULL;
-
-    // We need to put in an empty condition here.
-    while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        uintptr_t phys = get_phys_addr(buffer, 1);
-        raw_tx(eth, 1, &phys, &len, cookie);
     }
 }
 
