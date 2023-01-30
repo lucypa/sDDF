@@ -59,7 +59,11 @@ bool process_tx_ready(void)
     return done_work;
 }
 
-// Return available tx buffers to clients.
+/*
+ * Take as many available TX buffers from the driver and give them to
+ * the client. This will notify the client if we have moved buffers
+ * around and the client's TX available ring was already empty.
+ */
 // TODO: We need a way of knowing which client
 // this buffer originated from.
 bool process_tx_complete(void)
