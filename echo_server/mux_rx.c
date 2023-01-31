@@ -11,6 +11,8 @@ uintptr_t rx_used_cli;
 uintptr_t shared_dma_vaddr;
 uintptr_t uart_base;
 
+uintptr_t debug_mapping;
+
 #define NUM_CLIENTS 1
 
 #define COPY_CH 0
@@ -104,7 +106,7 @@ bool process_rx_complete(void)
         assert(!err);
         err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
         if (err) {
-            print("ARM Vspace invalidate failed\n");
+            print("MUX RX|ERROR: ARM Vspace invalidate failed\n");
             puthex64(err);
             print("\n");
         }
@@ -159,18 +161,23 @@ bool process_rx_complete(void)
     if (dropped && rx_avail_was_empty) {
         // @ivanv: We're potentially notifying again in process_rx_free.
         done_work = true;
+        print("MUX RX: added rx avail\n");
         sel4cp_notify(DRIVER_CH);
     }
 
     return done_work;
 }
 
+static uint64_t num_invoked = 0;
+static uint64_t num_enqueued = 0;
+
 // Loop over all client rings and return unused rx buffers to the driver
 bool process_rx_free(void)
 {
+    num_invoked += 1;
     /* If we have enqueued to the driver's available ring and the available
      * ring was empty, we want to notify the driver. We also only want to
-     * notify it once.
+     * notify it only once.
      */
     bool was_empty = ring_empty(state.rx_ring_drv.avail_ring);
     bool enqueued = false;
@@ -184,6 +191,7 @@ bool process_rx_free(void)
             err = enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
             assert(!err);
             enqueued = true;
+            num_enqueued += 1;
         }
     }
     if (enqueued && was_empty) {
@@ -198,6 +206,13 @@ bool process_rx_free(void)
         // puthex64(ring_size(state.rx_ring_drv.used_ring));
         // print("\n\n");
         // print("MUX|RX: notifying driver!\n");
+        // print("MUX RX: ADDED RX AVAIL\n");
+        // print("     num_enqueued: ");
+        // puthex64(num_enqueued);
+        // print("\n");
+        // print("     num_invoked: ");
+        // puthex64(num_invoked);
+        // print("\n");
         sel4cp_notify(DRIVER_CH);
     }
 
@@ -242,7 +257,6 @@ void notified(sel4cp_channel ch)
         if (ch == COPY_CH) {
             // We should only be notified by the copy component
             // if there is something placed in the available ring.
-            // assert(!ring_empty(state.rx_ring_clients[0].avail_ring));
         } else if (ch == DRIVER_CH) {
             // if (ring_empty(state.rx_ring_drv.used_ring)) {
             //     print("MUX| rx_ring_drv.used_ring size: ");
@@ -263,7 +277,7 @@ void notified(sel4cp_channel ch)
             print("MUX RX: unexpected notification!\n");
         }
         static unsigned counter = 0;
-        if (++counter % 0x10000U == 0) {
+        if (++counter % 0x1000U == 0) {
             print("MUX RX (BEFORE): client[0].avail ");
             puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
             print("\n client[0].used ");
@@ -274,9 +288,9 @@ void notified(sel4cp_channel ch)
             puthex64(ring_size(state.rx_ring_drv.used_ring));
             print("\n\n");
         }
-        bool complete_done_work = process_rx_complete();
-        bool free_done_work = process_rx_free();
-        if (!complete_done_work && !free_done_work) {
+        process_rx_complete();
+        process_rx_free();
+        // if (!complete_done_work && !free_done_work) {
             // print("MUX RX| no work done ");
             // if (ch == COPY_CH) {
             //     print("from copy\n");
@@ -284,8 +298,8 @@ void notified(sel4cp_channel ch)
             // if (ch == DRIVER_CH) {
             //     print("from driver\n");
             // }
-        }
-        if (counter % 0x10000U == 0) {
+        // }
+        if (counter % 0x1000U == 0) {
             print("MUX RX (AFTER): client[0].avail ");
             puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
             print("\n client[0].used ");

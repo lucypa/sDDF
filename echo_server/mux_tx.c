@@ -14,6 +14,9 @@ uintptr_t uart_base;
 #define NUM_CLIENTS 1
 #define DRIVER_CH 1
 
+static bool has_received_pp = false;
+static bool has_notified_client_since_pp = false;
+
 typedef struct state {
     /* Pointers to shared buffers */
     ring_handle_t tx_ring_drv;
@@ -32,20 +35,15 @@ bool process_tx_ready(void)
     bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
 
     // @ivanv: should check that driver TX ring has room
-    while(!ring_empty(state.tx_ring_clients[0].used_ring)) {
+    while (!ring_empty(state.tx_ring_clients[0].used_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
 
         int err = dequeue_used(&state.tx_ring_clients[0], &addr, &len, &cookie);
-        if (err) {
-            print("process_tx_ready dequeue used failed.\n");
-            break;
-        }
+        assert(!err);
         err = enqueue_used(&state.tx_ring_drv, addr, len, cookie);
-        if (err) {
-            print("MUX TX|ERROR: Failed to enqueue to used driver TX ring\n");
-        }
+        assert(!err);
         done_work = true;
     }
 
@@ -60,7 +58,7 @@ bool process_tx_ready(void)
 }
 
 /*
- * Take as many available TX buffers from the driver and give them to
+ * Take as many TX available buffers from the driver and give them to
  * the client. This will notify the client if we have moved buffers
  * around and the client's TX available ring was already empty.
  */
@@ -82,7 +80,10 @@ bool process_tx_complete(void)
     }
 
     if (enqueued && was_empty) {
-        print("MUX TX notifying client\n");
+        assert(!ring_empty(state.tx_ring_clients[0].avail_ring));
+        if (has_received_pp) {
+            has_notified_client_since_pp = true;
+        }
         sel4cp_notify(CLIENT_CH);
     }
 
@@ -128,11 +129,15 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     puthex64(ring_size(state.tx_ring_drv.avail_ring));
     print("\n tx_used_drv ");
     puthex64(ring_size(state.tx_ring_drv.used_ring));
-    print("\n tx_avail_clients[0] ");
+    print("\n tx_ring_clients[0].avail_ring ");
     puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
-    print("\n tx_used_clients[0] ");
+    print("\n tx_ring_clients[0].used_ring ");
     puthex64(ring_size(state.tx_ring_clients[0].used_ring));
     print("\n\n");
+    has_received_pp = true;
+    if (has_received_pp && has_notified_client_since_pp) {
+        print("MUXTX| has notified client since PP!\n");
+    }
     return sel4cp_msginfo_new(0, 0);
 }
 
