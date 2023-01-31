@@ -321,7 +321,7 @@ void process_rx_queue(void)
     // /* DRIVER component */
     // sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
     int count = 0;
-    while (!ring_empty(state.rx_ring.used_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring) && !ring_emptystate.tx_ring,avail_ring)) {
         incoming++;
         uintptr_t addr;
         unsigned int len;
@@ -504,7 +504,7 @@ void notified(sel4cp_channel ch)
     switch(ch) {
         case RX_CH:
             // If we've been notified by the COPY component, we should
-            // have something to consume in the available ring.
+            // have something to consume in the used ring.
             // assert(!ring_empty(state.rx_ring.used_ring));
             process_rx_queue();
             return;
@@ -517,6 +517,13 @@ void notified(sel4cp_channel ch)
             sel4cp_irq_ack(ch);
             return;
         case TX_CH:
+            /*
+             * We stop processing the Rx ring if there are no
+             * Tx slots avilable.
+             * Resume here.
+             */
+            if (!ring_empty(state.rx_ring.used_ring))
+                process_rx_queue();
             print("Lwip incoming: ");
             puthex64(incoming);
             print("\nLwip outgoing: ");
