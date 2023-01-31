@@ -321,7 +321,7 @@ void process_rx_queue(void)
     // /* DRIVER component */
     // sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
     int count = 0;
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_emptystate.tx_ring,avail_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
         incoming++;
         uintptr_t addr;
         unsigned int len;
