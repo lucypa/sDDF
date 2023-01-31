@@ -39,6 +39,8 @@ uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
+uintptr_t debug_mapping;
+
 #define PBUF_MAGIC (0x1234123241234ULL)
 typedef enum {
     ORIGIN_RX_QUEUE,
@@ -80,7 +82,6 @@ uint64_t outgoing = 0;
 typedef struct lwip_custom_pbuf {
     struct pbuf_custom custom;
     ethernet_buffer_t *buffer;
-    state_t *state;
     uint64_t magic;
 } lwip_custom_pbuf_t;
 LWIP_MEMPOOL_DECLARE(
@@ -104,18 +105,25 @@ dump_mac(uint8_t *mac)
     sel4cp_dbg_putc('\n');
 }
 
-static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
+static uint64_t enqueued_avail_since_empty = 0;
+
+static inline void return_buffer(ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
     the ring should never be full. */
-    bool was_empty = ring_empty(state->rx_ring.avail_ring);
-    int err = enqueue_avail(&state->rx_ring, buffer->buffer, BUF_SIZE, buffer);
+    bool was_empty = ring_empty(state.rx_ring.avail_ring);
+    int err = enqueue_avail(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
+    enqueued_avail_since_empty += 1;
     if (was_empty) {
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + RX_CH);
-        print("LWIP| notify copy!\n");
+        print("LWIP| notify copy =====! ");
+        print("enqueued_avail_since_empty: ");
+        puthex64(enqueued_avail_since_empty);
+        print("\n");
+        enqueued_avail_since_empty = 0;
         sel4cp_notify(RX_CH);
     }
 }
@@ -137,7 +145,7 @@ static void interface_free_buffer(struct pbuf *buf)
         print("MAGIC ASSERTION FAILED\n");
     }
     SYS_ARCH_PROTECT(old_level);
-    return_buffer(custom_pbuf->state, custom_pbuf->buffer);
+    return_buffer(custom_pbuf->buffer);
     LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
     SYS_ARCH_UNPROTECT(old_level);
 }
@@ -155,7 +163,7 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
 {
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) LWIP_MEMPOOL_ALLOC(RX_POOL);
 
-    custom_pbuf->state = state;
+    // custom_pbuf->state = state;
     custom_pbuf->buffer = buffer;
     custom_pbuf->custom.custom_free_function = interface_free_buffer;
     custom_pbuf->magic = PBUF_MAGIC;
@@ -177,7 +185,9 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
  * @param length length of buffer required
  *
  */
-static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
+static uint64_t num_dequeues = 0;
+
+static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 {
     if (BUF_SIZE < length) {
         sel4cp_dbg_puts("Requested buffer size too large.");
@@ -188,29 +198,37 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
     unsigned int len;
     ethernet_buffer_t *buffer;
 
-    if (ring_empty(state->tx_ring.avail_ring)) {
+    // if (ring_empty(state.tx_ring.avail_ring)) {
+        
+    // }
+
+    int err = dequeue_avail(&(state.tx_ring), &addr, &len, (void **)&buffer);
+    if (err) {
         print("LWIP|ERROR: TX available ring is empty!\n");
-        print("LWIP: rx_avail ");
-        puthex64(ring_size(state->rx_ring.avail_ring));
-        print("\n rx_used ");
-        puthex64(ring_size(state->rx_ring.used_ring));
-        print("\n tx_avail ");
-        puthex64(ring_size(state->tx_ring.avail_ring));
-        print("\n tx_used ");
-        puthex64(ring_size(state->tx_ring.used_ring));
-        print("\n\n");
-        /* COPY component */
-        sel4cp_ppcall(2, sel4cp_msginfo_new(0, 0));
-        /* MUX TX component */
-        sel4cp_ppcall(3, sel4cp_msginfo_new(0, 0));
-        /* MUX RX component */
-        sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
-        /* DRIVER component */
-        sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
+        // print("Num dequeues since last error: ");
+        // puthex64(num_dequeues);
+        // print("\n");
+        // num_dequeues = 0;
+        // print("LWIP: rx_avail ");
+        // puthex64(ring_size(state.rx_ring.avail_ring));
+        // print("\n rx_used ");
+        // puthex64(ring_size(state.rx_ring.used_ring));
+        // print("\n tx_avail ");
+        // puthex64(ring_size(state.tx_ring.avail_ring));
+        // print("\n tx_used ");
+        // puthex64(ring_size(state.tx_ring.used_ring));
+        // print("\n\n");
+        // /* COPY component */
+        // sel4cp_ppcall(2, sel4cp_msginfo_new(0, 0));
+        // /* MUX TX component */
+        // sel4cp_ppcall(3, sel4cp_msginfo_new(0, 0));
+        // /* MUX RX component */
+        // sel4cp_ppcall(10, sel4cp_msginfo_new(0, 0));
+        // /* DRIVER component */
+        // sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
         return NULL;
     }
-
-    dequeue_avail(&state->tx_ring, &addr, &len, (void **)&buffer);
+    num_dequeues += 1;
     if (!buffer) {
         print("LWIP|ERROR: dequeued a null ethernet buffer\n");
         return NULL;
@@ -235,9 +253,9 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
         return ERR_MEM;
     }
 
-    state_t *state = (state_t *)netif->state;
+    // state_t *state = (state_t *)netif->state;
 
-    ethernet_buffer_t *buffer = alloc_tx_buffer(state, p->tot_len);
+    ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
     if (buffer == NULL) {
         return ERR_MEM;
     }
@@ -262,10 +280,10 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     }
 
     /* insert into the used tx queue */
-    err = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
+    err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, buffer);
     if (err) {
         print("LWIP|ERROR: TX used ring full\n");
-        err = enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        err = enqueue_avail(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
         assert(!err);
         return ERR_MEM;
     }
@@ -489,14 +507,16 @@ void init(void)
     state.netif.name[0] = 'e';
     state.netif.name[1] = '0';
 
-    if (!netif_add(&(state.netif), &ipaddr, &netmask, &gw, &state,
+    if (!netif_add(&(state.netif), &ipaddr, &netmask, &gw, (void *)&state,
               ethernet_init, ethernet_input)) {
-        sel4cp_dbg_puts("Netif add returned NULL\n");
+        print("Netif add returned NULL\n");
     }
 
     netif_set_default(&(state.netif));
 
     sel4cp_notify(RX_CH);
+
+    // debug_init();
 }
 
 void notified(sel4cp_channel ch)
@@ -532,6 +552,7 @@ void notified(sel4cp_channel ch)
             return;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
+            assert(0);
             break;
     }
 }

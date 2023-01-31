@@ -196,10 +196,6 @@ static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int
  */
 static inline int dequeue_avail(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
-    if (ring_empty(ring->avail_ring)) {
-        print("ERROR: Attempting to dequeue from empty available ring\n");
-        return -1;
-    }
     return dequeue(ring->avail_ring, addr, len, cookie);
 }
 
@@ -215,10 +211,6 @@ static inline int dequeue_avail(ring_handle_t *ring, uintptr_t *addr, unsigned i
  */
 static inline int dequeue_used(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
-    if (ring_empty(ring->used_ring)) {
-        print("ERROR: Attempting to dequeue from empty used ring\n");
-        return -1;
-    }
     return dequeue(ring->used_ring, addr, len, cookie);
 }
 

@@ -12,6 +12,8 @@ uintptr_t shared_dma_vaddr_mux;
 uintptr_t shared_dma_vaddr_cli;
 uintptr_t uart_base;
 
+uintptr_t debug_mapping;
+
 #define MUX_RX_CH 0
 #define CLIENT_CH 1
 
@@ -22,6 +24,8 @@ uintptr_t uart_base;
 ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 int initialised = 0;
+
+static int count = 0;
 
 bool process_rx_complete(void)
 {
@@ -107,6 +111,17 @@ bool process_rx_complete(void)
 
         processed += 1;
     }
+
+    count += 1;
+
+    // if ((mux_was_full || mux_avail_was_empty) && done_work) {
+    //     if (count % 100 == 0) {
+    //         // print("COPY has addition mux\n");
+    //         count = 0;
+    //     }
+    //     // assert(!ring_empty(rx_ring_mux.avail_ring));
+    //     sel4cp_notify(MUX_RX_CH);
+    // }
 
     if (was_empty && done_work) {
         // @ivanv: this should be an sel4cp syscall rather than dealing with these globals in user code

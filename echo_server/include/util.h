@@ -31,10 +31,12 @@ putC(uint8_t ch)
 static void
 print(const char *s)
 {
+#ifndef NO_PRINTING
     while (*s) {
         putC(*s);
         s++;
     }
+#endif
 }
 
 static char
@@ -75,6 +77,26 @@ put8(uint8_t x)
     } while (x);
     print(&tmp[i]);
 }
+
+// static uintptr_t debug_addr = 0x10000000;
+// static void debug_init() {
+//     uint8_t *debug = (uint8_t *)debug_addr;
+//     for (int i = 0; i < 4096; i++) {
+//         *debug = 0;
+//         debug++;
+//     }
+// }
+
+// static void debug_write_word(uint8_t word) {
+//     uint8_t *debug_void_addr = (void *) debug_addr;
+//     debug_void_addr[0] = word;
+// }
+
+// static uint8_t debug_read_word() {
+//     uint8_t *debug_void_addr = (uint8_t *) debug_addr;
+
+//     return debug_void_addr[0];
+// }
 
 static void _assert_fail(
     const char  *assertion,
