@@ -176,6 +176,9 @@ void notified(sel4cp_channel ch)
             print(": ");
             puthex64(entries);
             print("\n");
+            print("TotalUtilisation: ");
+            puthex64(total);
+            print("\n");
             print("}\n");
             #endif
 
