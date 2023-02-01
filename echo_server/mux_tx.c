@@ -93,34 +93,34 @@ bool process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    static unsigned counter = 0;
-    if (++counter % 0x10000U == 0) {
-        print("MUX TX (BEFORE): client[0].avail ");
-        puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
-        print("\n client[0].used ");
-        puthex64(ring_size(state.tx_ring_clients[0].used_ring));
-        print("\n driver.avail ");
-        puthex64(ring_size(state.tx_ring_drv.avail_ring));
-        print("\n driver.used ");
-        puthex64(ring_size(state.tx_ring_drv.used_ring));
-        print("\n\n");
-    }
+    // static unsigned counter = 0;
+    // if (++counter % 0x10000U == 0) {
+    //     print("MUX TX (BEFORE): client[0].avail ");
+    //     puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+    //     print("\n client[0].used ");
+    //     puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+    //     print("\n driver.avail ");
+    //     puthex64(ring_size(state.tx_ring_drv.avail_ring));
+    //     print("\n driver.used ");
+    //     puthex64(ring_size(state.tx_ring_drv.used_ring));
+    //     print("\n\n");
+    // }
     bool complete_done_work = process_tx_complete();
     bool ready_done_work = process_tx_ready();
     if (!ready_done_work && !complete_done_work) {
         // print("MUX TX| no work done!\n");
     }
-    if (counter % 0x10000U == 0) {
-        print("MUX TX (AFTER): client[0].avail ");
-        puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
-        print("\n client[0].used ");
-        puthex64(ring_size(state.tx_ring_clients[0].used_ring));
-        print("\n driver.avail ");
-        puthex64(ring_size(state.tx_ring_drv.avail_ring));
-        print("\n driver.used ");
-        puthex64(ring_size(state.tx_ring_drv.used_ring));
-        print("\n\n");
-    }
+    // if (counter % 0x10000U == 0) {
+    //     print("MUX TX (AFTER): client[0].avail ");
+    //     puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
+    //     print("\n client[0].used ");
+    //     puthex64(ring_size(state.tx_ring_clients[0].used_ring));
+    //     print("\n driver.avail ");
+    //     puthex64(ring_size(state.tx_ring_drv.avail_ring));
+    //     print("\n driver.used ");
+    //     puthex64(ring_size(state.tx_ring_drv.used_ring));
+    //     print("\n\n");
+    // }
 }
 
 seL4_MessageInfo_t
