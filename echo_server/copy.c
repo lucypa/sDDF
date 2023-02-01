@@ -123,21 +123,12 @@ bool process_rx_complete(void)
     //     sel4cp_notify(MUX_RX_CH);
     // }
 
-    if (was_empty && done_work) {
         // @ivanv: this should be an sel4cp syscall rather than dealing with these globals in user code
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
         // print("COPY| notifying lwip\n");
-        sel4cp_notify(CLIENT_CH);
-    } else {
-        // if (was_empty) {
-        //     print("COPY| was_empty is true!\n");
-        // }
-        // if (done_work) {
-        //     print("COPY| done work!\n");
-        // }
-    }
+    sel4cp_notify(CLIENT_CH);
 
     if ((mux_was_full || mux_avail_was_empty) && done_work) {
         // assert(!ring_empty(rx_ring_mux.avail_ring));
