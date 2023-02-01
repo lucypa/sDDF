@@ -276,18 +276,18 @@ void notified(sel4cp_channel ch)
         } else {
             print("MUX RX: unexpected notification!\n");
         }
-        static unsigned counter = 0;
-        if (++counter % 0x1000U == 0) {
-            print("MUX RX (BEFORE): client[0].avail ");
-            puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-            print("\n client[0].used ");
-            puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-            print("\n driver.avail ");
-            puthex64(ring_size(state.rx_ring_drv.avail_ring));
-            print("\n driver.used ");
-            puthex64(ring_size(state.rx_ring_drv.used_ring));
-            print("\n\n");
-        }
+        // static unsigned counter = 0;
+        // if (++counter % 0x1000U == 0) {
+        //     print("MUX RX (BEFORE): client[0].avail ");
+        //     puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+        //     print("\n client[0].used ");
+        //     puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+        //     print("\n driver.avail ");
+        //     puthex64(ring_size(state.rx_ring_drv.avail_ring));
+        //     print("\n driver.used ");
+        //     puthex64(ring_size(state.rx_ring_drv.used_ring));
+        //     print("\n\n");
+        // }
         process_rx_complete();
         process_rx_free();
         // if (!complete_done_work && !free_done_work) {
@@ -299,17 +299,17 @@ void notified(sel4cp_channel ch)
             //     print("from driver\n");
             // }
         // }
-        if (counter % 0x1000U == 0) {
-            print("MUX RX (AFTER): client[0].avail ");
-            puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-            print("\n client[0].used ");
-            puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-            print("\n driver.avail ");
-            puthex64(ring_size(state.rx_ring_drv.avail_ring));
-            print("\n driver.used ");
-            puthex64(ring_size(state.rx_ring_drv.used_ring));
-            print("\n\n");
-        }
+        // if (counter % 0x1000U == 0) {
+        //     print("MUX RX (AFTER): client[0].avail ");
+        //     puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
+        //     print("\n client[0].used ");
+        //     puthex64(ring_size(state.rx_ring_clients[0].used_ring));
+        //     print("\n driver.avail ");
+        //     puthex64(ring_size(state.rx_ring_drv.avail_ring));
+        //     print("\n driver.used ");
+        //     puthex64(ring_size(state.rx_ring_drv.used_ring));
+        //     print("\n\n");
+        // }
     } else {
         process_rx_free();
         sel4cp_notify(DRIVER_CH);
