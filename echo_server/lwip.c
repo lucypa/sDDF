@@ -453,6 +453,18 @@ void init_post(void)
     print(": init complete -- waiting for notification\n");
 }
 
+seL4_MessageInfo_t
+protected(sel4cp_channel ch, sel4cp_msginfo msginfo) {
+    print("LWIP: rx_avail ");
+    puthex64(ring_size(state.rx_ring.avail_ring));
+    print("\n rx_used ");
+    puthex64(ring_size(state.rx_ring.used_ring));
+    print("\n tx_avail ");
+    puthex64(ring_size(state.tx_ring.avail_ring));
+    print("\n tx_used ");
+    puthex64(ring_size(state.tx_ring.used_ring));
+}
+
 void init(void)
 {
     print(sel4cp_name);
