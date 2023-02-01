@@ -116,10 +116,18 @@ static void _assert_fail(
     while (1) {}
 }
 
+#ifdef NO_ASSERT
+
+#define assert(expr)
+
+#else
+
 #define assert(expr) \
     do { \
         if (!(expr)) { \
             _assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__); \
         } \
     } while(0)
+
+#endif
 
