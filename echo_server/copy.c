@@ -180,9 +180,7 @@ void notified(sel4cp_channel ch)
         print("COPY| unexpected notification!\n");
         assert(0);
     }
-    if (!process_rx_complete()) {
-        // print("COPY| done no work!\n");
-    }
+    process_rx_complete();
 }
 
 void init(void)
