@@ -124,8 +124,8 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
         // puthex64(enqueued_avail_since_empty);
         // print("\n");
         enqueued_avail_since_empty = 0;
-        // sel4cp_notify_delayed(RX_CH);
-        sel4cp_notify(RX_CH);
+        // sel4cp_notify(RX_CH);
+        sel4cp_notify_delayed(RX_CH);
     }
 }
 
