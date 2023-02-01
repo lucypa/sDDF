@@ -162,7 +162,8 @@ bool process_rx_complete(void)
         // @ivanv: We're potentially notifying again in process_rx_free.
         done_work = true;
         print("MUX RX: added rx avail\n");
-        sel4cp_notify(DRIVER_CH);
+        // sel4cp_notify(DRIVER_CH);
+        sel4cp_notify_delayed(DRIVER_CH);
     }
 
     return done_work;
@@ -213,7 +214,8 @@ bool process_rx_free(void)
         // print("     num_invoked: ");
         // puthex64(num_invoked);
         // print("\n");
-        sel4cp_notify(DRIVER_CH);
+        // sel4cp_notify(DRIVER_CH);
+        sel4cp_notify_delayed(DRIVER_CH);
     }
 
     return enqueued;

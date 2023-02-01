@@ -51,7 +51,8 @@ bool process_tx_ready(void)
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
-        sel4cp_notify(DRIVER_CH);
+        sel4cp_notify_delayed(DRIVER_CH);
+        // sel4cp_notify(DRIVER_CH);
     }
 
     return done_work;

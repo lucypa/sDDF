@@ -128,11 +128,13 @@ bool process_rx_complete(void)
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
         // print("COPY| notifying lwip\n");
-    sel4cp_notify(CLIENT_CH);
+    if (!ring_empty(rx_ring_cli.used_ring)) {
+        sel4cp_notify(CLIENT_CH);
+    }
 
     if ((mux_was_full || mux_avail_was_empty) && done_work) {
         // assert(!ring_empty(rx_ring_mux.avail_ring));
-        sel4cp_notify(MUX_RX_CH);
+        sel4cp_notify_delayed(MUX_RX_CH);
     }
 
     // print("COPY| processed ");
