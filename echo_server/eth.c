@@ -185,11 +185,11 @@ enable_irqs(volatile struct enet_regs *eth, uint32_t mask)
     eth->eimr = mask;
     irq_mask = mask;
 
-    if (alloc_rx_buf_empty && (irq_mask & NETIRQ_RXF) == 0) {
-        print("alloc rx buf empty and irq mask turned off\n");
-    } else if (alloc_rx_buf_empty && (irq_mask & NETIRQ_RXF)) {
-        print("alloc rx buf empty and irq mask turned ON\n");
-    }
+    // if ((irq_mask & NETIRQ_RXF) == 0) {
+    //     print("irq mask turned off\n");
+    // } else if ((irq_mask & NETIRQ_RXF)) {
+    //     print("irq mask turned ON\n");
+    // }
 }
 
 static uintptr_t
@@ -219,7 +219,7 @@ static void fill_rx_bufs(bool on_irq)
             if (on_irq) {
                 // print("RX available ring empty ON IRQ\n");
             } else {
-                print("RX avaible ring empty not on irq\n");
+                // print("RX avaible ring empty not on irq\n");
             }
             // debug_write_word(1);
             // assert(debug_read_word() == 1);
@@ -643,17 +643,17 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     puthex64(ring_size(tx_ring.used_ring));
     print("\n\n");
     has_received_pp = true;
-    if (has_enqueued_avail_tx_since_pp) {
-        print("Have enqueue avail since getting PPs\n");
-    }
-    if (has_notified_mux_tx_since_pp) {
-        print("Have notified MUX TX since getting PPs\n");
-    }
-    print("Number of RX IRQs received: ");
-    puthex64(num_rx_irqs);
-    print("Number of TX IRQs received: ");
-    puthex64(num_tx_irqs);
-    print("\n");
+    // if (has_enqueued_avail_tx_since_pp) {
+    //     print("Have enqueue avail since getting PPs\n");
+    // }
+    // if (has_notified_mux_tx_since_pp) {
+    //     print("Have notified MUX TX since getting PPs\n");
+    // }
+    // print("Number of RX IRQs received: ");
+    // puthex64(num_rx_irqs);
+    // print("Number of TX IRQs received: ");
+    // puthex64(num_tx_irqs);
+    // print("\n");
     return sel4cp_msginfo_new(0, 0);
 }
 

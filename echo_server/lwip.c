@@ -119,11 +119,12 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + RX_CH);
-        print("LWIP| notify copy =====! ");
-        print("enqueued_avail_since_empty: ");
-        puthex64(enqueued_avail_since_empty);
-        print("\n");
+        // print("LWIP| notify copy =====! ");
+        // print("enqueued_avail_since_empty: ");
+        // puthex64(enqueued_avail_since_empty);
+        // print("\n");
         enqueued_avail_since_empty = 0;
+        // sel4cp_notify_delayed(RX_CH);
         sel4cp_notify(RX_CH);
     }
 }
@@ -544,11 +545,11 @@ void notified(sel4cp_channel ch)
              */
             if (!ring_empty(state.rx_ring.used_ring))
                 process_rx_queue();
-            print("Lwip incoming: ");
-            puthex64(incoming);
-            print("\nLwip outgoing: ");
-            puthex64(outgoing);
-            print("\n");
+            // print("Lwip incoming: ");
+            // puthex64(incoming);
+            // print("\nLwip outgoing: ");
+            // puthex64(outgoing);
+            // print("\n");
             return;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
