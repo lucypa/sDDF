@@ -147,6 +147,13 @@
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
     </protection_domain>
 
+<!--     <protection_domain name="serial" priority="120" >
+        <program_image path="serial.elf" />
+        <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+        <irq irq="59" id="1" />
+    </protection_domain>
+ -->
     <channel>
         <end pd="eth" id="2" />
         <end pd="mux_rx" id="1" />
@@ -197,4 +204,27 @@
         <end pd="lwip" id="10" />
         <end pd="mux_rx" id="10" />
     </channel>
+
+    <!-- SERIAL DEBUGGING CHANNELS -->
+<!--     <channel>
+        <end pd="serial" id="3" />
+        <end pd="copy" id="12" />
+    </channel>
+    <channel>
+        <end pd="serial" id="4" />
+        <end pd="lwip" id="12" />
+    </channel>
+    <channel>
+        <end pd="serial" id="5" />
+        <end pd="eth" id="12" />
+    </channel>
+    <channel>
+        <end pd="serial" id="6" />
+        <end pd="mux_tx" id="12" />
+    </channel>
+    <channel>
+        <end pd="serial" id="7" />
+        <end pd="mux_rx" id="12" />
+    </channel>
+ -->
 </system>
