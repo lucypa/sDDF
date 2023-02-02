@@ -573,6 +573,6 @@ void notified(sel4cp_channel ch)
     }
     if (notify_tx) {
         notify_tx = false;
-        seL4cp_notify(TX_CH);
+        sel4cp_notify(TX_CH);
     }
 }
