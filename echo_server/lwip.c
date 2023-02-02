@@ -41,6 +41,8 @@ uintptr_t uart_base;
 
 uintptr_t debug_mapping;
 
+static bool notify_tx = false;
+
 #define PBUF_MAGIC (0x1234123241234ULL)
 typedef enum {
     ORIGIN_RX_QUEUE,
@@ -315,7 +317,8 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     //     /* DRIVER component */
     //     sel4cp_ppcall(6, sel4cp_msginfo_new(0, 0));
     // }
-    sel4cp_notify(TX_CH);
+//    sel4cp_notify(TX_CH);
+    notify_tx = true;
     return ret;
 }
 
@@ -540,15 +543,15 @@ void notified(sel4cp_channel ch)
             // have something to consume in the used ring.
             // assert(!ring_empty(state.rx_ring.used_ring));
             process_rx_queue();
-            return;
+            break;
         case INIT:
             init_post();
-            return;
+            break;
         case IRQ:
             /* Timer */
             irq(ch);
             sel4cp_irq_ack(ch);
-            return;
+            break;
         case TX_CH:
             /*
              * We stop processing the Rx ring if there are no
@@ -562,10 +565,14 @@ void notified(sel4cp_channel ch)
             // print("\nLwip outgoing: ");
             // puthex64(outgoing);
             // print("\n");
-            return;
+            break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
             assert(0);
             break;
+    }
+    if (notify_tx) {
+        notify_tx = false;
+        seL4cp_notify(TX_CH);
     }
 }
