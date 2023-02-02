@@ -109,6 +109,8 @@ dump_mac(uint8_t *mac)
 
 static uint64_t enqueued_avail_since_empty = 0;
 
+static bool notify_rx = false;
+
 static inline void return_buffer(ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
@@ -127,7 +129,8 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
         // print("\n");
         enqueued_avail_since_empty = 0;
         // sel4cp_notify(RX_CH);
-        sel4cp_notify_delayed(RX_CH);
+        // sel4cp_notify_delayed(RX_CH);
+        notify_rx = true;
     }
 }
 
@@ -571,8 +574,12 @@ void notified(sel4cp_channel ch)
             assert(0);
             break;
     }
+    if (notify_rx) {
+        notify_rx = false;
+        sel4cp_notify(RX_CH);
+    }
     if (notify_tx) {
         notify_tx = false;
-        sel4cp_notify(TX_CH);
+        sel4cp_notify_delayed(TX_CH);
     }
 }
