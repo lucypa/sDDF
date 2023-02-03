@@ -165,7 +165,7 @@ void notified(sel4cp_channel ch)
         // initliased in correct order.
         sel4cp_notify(MUX_RX_CH);
         initialised = 1;
-        print("COPY: init finished\n");
+        // print("COPY: init finished\n");
         return;
     }
     // we have one job.
@@ -187,7 +187,7 @@ void notified(sel4cp_channel ch)
 
 void init(void)
 {
-    print("COPY: init started\n");
+    // print("COPY: init started\n");
     /* Set up shared memory regions */
     // @ivanv: Having asynchronous initialisation is extremely fragile, we need to find a better way.
     ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 1);
