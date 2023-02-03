@@ -175,13 +175,12 @@ static uint64_t num_enqueued = 0;
 // Loop over all client rings and return unused rx buffers to the driver
 bool process_rx_free(void)
 {
-    num_invoked += 1;
     /* If we have enqueued to the driver's available ring and the available
      * ring was empty, we want to notify the driver. We also only want to
      * notify it only once.
      */
-    bool was_empty = ring_empty(state.rx_ring_drv.avail_ring);
-    bool enqueued = false;
+    uint64_t original_size = ring_size(state.rx_ring_drv.avail_ring);
+    uint64_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
         while (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
             uintptr_t addr;
@@ -191,11 +190,10 @@ bool process_rx_free(void)
             assert(!err);
             err = enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
             assert(!err);
-            enqueued = true;
-            num_enqueued += 1;
+            enqueued += 1;
         }
     }
-    if (enqueued && was_empty) {
+    if ((original_size == 0 || original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring)) && enqueued != 0) {
         // print("MUX RX: notify driver in process_rx_free\n");
         // print("MUX RX (before notify): client[0].avail ");
         // puthex64(ring_size(state.rx_ring_clients[0].avail_ring));

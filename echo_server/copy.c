@@ -25,20 +25,19 @@ ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 int initialised = 0;
 
-static int count = 0;
-
 bool process_rx_complete(void)
 {
     // print("copy: process_rx_complete\n");
     bool done_work = false;
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
-    bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
-    int was_empty = ring_empty(rx_ring_cli.used_ring);
+    // bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
+    uint64_t mux_avail_original_size = ring_size(rx_ring_mux.avail_ring);
+    bool cli_used_was_empty = ring_empty(rx_ring_cli.used_ring);
     /* We only want to copy buffers if meet both conditions:
        1. There are buffers from the mux to copy to.
        2. There are buffers from the client to copy.
     */
-    int processed = 0;
+    uint64_t enqueued = 0;
     // if (!(!ring_empty(rx_ring_mux.used_ring) &&
     //         !ring_empty(rx_ring_cli.avail_ring) &&
     //         !ring_full(rx_ring_mux.avail_ring) &&
@@ -109,10 +108,8 @@ bool process_rx_complete(void)
 
         done_work = true;
 
-        processed += 1;
+        enqueued += 1;
     }
-
-    count += 1;
 
     // if ((mux_was_full || mux_avail_was_empty) && done_work) {
     //     if (count % 100 == 0) {
@@ -128,11 +125,12 @@ bool process_rx_complete(void)
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
         // print("COPY| notifying lwip\n");
-    if (!ring_empty(rx_ring_cli.used_ring)) {
+    if (cli_used_was_empty && enqueued) {
         sel4cp_notify(CLIENT_CH);
     }
 
-    if ((mux_was_full || mux_avail_was_empty) && done_work) {
+    // if ((mux_was_full || mux_avail_was_empty) && done_work) {
+    if ((mux_avail_original_size == 0 || mux_was_full || mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) && enqueued) {
         // assert(!ring_empty(rx_ring_mux.avail_ring));
         sel4cp_notify_delayed(MUX_RX_CH);
     }
