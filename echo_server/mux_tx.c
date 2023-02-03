@@ -31,8 +31,8 @@ TODO: Put client prioritisation in here.
 */
 void process_tx_ready(void)
 {
-    bool done_work = false;
-    bool was_empty = ring_empty(state.tx_ring_drv.used_ring);
+    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
+    uint64_t enqueued = 0;
 
     // @ivanv: should check that driver TX ring has room
     while (!ring_empty(state.tx_ring_clients[0].used_ring)) {
@@ -44,10 +44,11 @@ void process_tx_ready(void)
         assert(!err);
         err = enqueue_used(&state.tx_ring_drv, addr, len, cookie);
         assert(!err);
-        done_work = true;
+
+        enqueued += 1;
     }
 
-    if (was_empty && done_work) {
+    if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
         // have_signal = true;
         // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
         // signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
