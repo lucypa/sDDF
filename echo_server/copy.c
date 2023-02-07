@@ -12,8 +12,6 @@ uintptr_t shared_dma_vaddr_mux;
 uintptr_t shared_dma_vaddr_cli;
 uintptr_t uart_base;
 
-uintptr_t debug_mapping;
-
 #define MUX_RX_CH 0
 #define CLIENT_CH 1
 

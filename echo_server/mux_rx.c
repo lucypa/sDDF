@@ -11,8 +11,6 @@ uintptr_t rx_used_cli;
 uintptr_t shared_dma_vaddr;
 uintptr_t uart_base;
 
-uintptr_t debug_mapping;
-
 #define NUM_CLIENTS 1
 
 #define COPY_CH 0
