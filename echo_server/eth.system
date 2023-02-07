@@ -34,8 +34,6 @@
 
     <memory_region name="cyclecounters" size="0x1000"/>
 
-    <memory_region name="debug" size="0x1000" />
-
     <!--- <memory_region name="log_buffer" size="0x200_000" page_size="0x200_000"/>-->
     <!-- <protection_domain name="eth" priority="100" pp="true" budget="100" period="400"> -->
     <protection_domain name="eth" priority="101" pp="true" budget="100" period="400">
@@ -59,7 +57,6 @@
         <irq irq="152" id="0" /> <!--> ethernet interrupt -->
 
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        <map mr="debug" vaddr="0x10_000_000" perms="rw" cached="false" setvar_vaddr="debug_mapping" />
 
         <!-- we need physical addresses of hw rings and dma region -->
         <setvar symbol="hw_ring_buffer_paddr" region_paddr="hw_ring_buffer" />
@@ -80,7 +77,6 @@
 
         <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        <map mr="debug" vaddr="0x10_000_000" perms="rw" cached="false" setvar_vaddr="debug_mapping" />
     </protection_domain>
 
     <protection_domain name="copy" priority="98" budget="20000" pp="true">
@@ -95,7 +91,6 @@
         <map mr="rx_used_cli" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used_cli" />
 
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        <map mr="debug" vaddr="0x10_000_000" perms="rw" cached="false" setvar_vaddr="debug_mapping" />
     </protection_domain>
 
     <protection_domain name="mux_tx" priority="100" budget="20000" pp="true">
@@ -132,7 +127,6 @@
         <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
 
         <irq irq="87" id="1" /> <!-- timer interrupt -->
-        <map mr="debug" vaddr="0x10_000_000" perms="rw" cached="false" setvar_vaddr="debug_mapping" />
     </protection_domain>
 
     <protection_domain name="benchIdle" priority="1" >

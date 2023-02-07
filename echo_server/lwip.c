@@ -39,8 +39,6 @@ uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
-uintptr_t debug_mapping;
-
 static bool notify_tx = false;
 
 #define PBUF_MAGIC (0x1234123241234ULL)
