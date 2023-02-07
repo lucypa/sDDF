@@ -90,8 +90,15 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    process_tx_complete();
-    process_tx_ready();
+    if (ch == CLIENT_CH || ch == DRIVER_CH) {
+        process_tx_complete();
+        process_tx_ready();
+    } else {
+       print("MUX TX|ERROR: unexpected notification from channel: ");
+       puthex64(ch);
+       print("\n");
+       assert(0);
+    }
 }
 
 seL4_MessageInfo_t
