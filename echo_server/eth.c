@@ -232,7 +232,6 @@ handle_rx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &rx;
     unsigned int head = ring->head;
     int num = 0;
-    int was_empty = ring_empty(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
