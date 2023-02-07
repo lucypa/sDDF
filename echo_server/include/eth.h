@@ -5,7 +5,14 @@
 
 #pragma once
 
-// @ivanv: Where do these come from!
+/* The reference manual used to acquire these values is:
+ *
+ * i.MX 8M Mini Applications Processor Reference Manual.
+ * Document number: IMX8MMRM.
+ * Rev. 3, 11/2020.
+ *
+ * The ethernet device is described in section 11.5.
+ */
 
 #define ECR_RESET       (1UL)
 #define ECR_DBSWP       (1UL << 8) /* descriptor byte swapping enable */
@@ -23,7 +30,10 @@
 #define TCR_FDEN        (1UL << 2) /* Full duplex enable */
 #define TX_ICEN         (1UL << 31)
 
-
+/*
+ * Section 11.5.5.1 - Interrupt Event Register (ENET_EIR)
+ * Page 3776.
+*/
 #define NETIRQ_BABR     (1UL << 30) /* Babbling Receive Error          */
 #define NETIRQ_BABT     (1UL << 29) /* Babbling Transmit Error         */
 #define NETIRQ_GRA      (1UL << 28) /* Graceful Stop Complete          */
@@ -133,6 +143,7 @@ struct mib_regs {
     uint32_t res1[7];
 };
 
+/* The ENET memory map can be found in Section 11.5.5 */
 struct enet_regs {
     /* Configuration */
     uint32_t res0[1];
