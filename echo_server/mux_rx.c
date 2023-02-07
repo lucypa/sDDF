@@ -80,17 +80,13 @@ int get_client(uintptr_t dma_vaddr) {
 }
 
 /*
-Loop over driver and insert all used rx buffers to appropriate client queues.
-*/
-bool process_rx_complete(void)
+ * Loop over driver and insert all used rx buffers to appropriate client queues.
+ */
+void process_rx_complete(void)
 {
-    bool done_work = false;
-    // print("MUX| rx complete\n");
     int notify_clients[NUM_CLIENTS] = {0};
     bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
-        // ring_size_after = ring_size(state.rx_ring_drv.used_ring);
-
         total++;
         uintptr_t addr = 0;
         unsigned int len = 0;
@@ -133,8 +129,6 @@ bool process_rx_complete(void)
             }
             dropped++;
         }
-
-        done_work = true;
     }
 
     /* Loop over bitmap and see who we need to notify. */
@@ -142,8 +136,6 @@ bool process_rx_complete(void)
         if (notify_clients[client]) {
             // assert(!ring_empty(state.rx_ring_clients[client].avail_ring));
             assert(!ring_empty(state.rx_ring_clients[client].used_ring));
-            // print("MUX RX: notify client\n");
-            done_work = true;
             sel4cp_notify(client);
         }
     }
@@ -153,14 +145,8 @@ bool process_rx_complete(void)
      * priority than the MUX
      */
     if (dropped && rx_avail_was_empty) {
-        // @ivanv: We're potentially notifying again in process_rx_free.
-        done_work = true;
-        print("MUX RX: added rx avail\n");
-        // sel4cp_notify(DRIVER_CH);
         sel4cp_notify_delayed(DRIVER_CH);
     }
-
-    return done_work;
 }
 
 // Loop over all client rings and return unused rx buffers to the driver
