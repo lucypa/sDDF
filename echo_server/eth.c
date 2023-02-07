@@ -18,15 +18,6 @@
 
 #define MDC_FREQ    20000000UL
 
-static bool has_enqueued_avail_tx_since_pp = false;
-static bool has_received_pp = false;
-static bool has_received_tx_irq_since_pp = false;
-static bool has_notified_mux_tx_since_pp = false;
-static bool alloc_rx_buf_empty = false;
-
-static uint64_t num_rx_irqs = 0;
-static uint64_t num_tx_irqs = 0;
-
 /* Memory regions. These all have to be here to keep compiler happy */
 uintptr_t hw_ring_buffer_vaddr;
 uintptr_t hw_ring_buffer_paddr;
@@ -182,12 +173,6 @@ enable_irqs(volatile struct enet_regs *eth, uint32_t mask)
 {
     eth->eimr = mask;
     irq_mask = mask;
-
-    // if ((irq_mask & NETIRQ_RXF) == 0) {
-    //     print("irq mask turned off\n");
-    // } else if ((irq_mask & NETIRQ_RXF)) {
-    //     print("irq mask turned ON\n");
-    // }
 }
 
 static uintptr_t
@@ -205,7 +190,7 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     return get_phys_addr(addr, 0);
 }
 
-static void fill_rx_bufs(bool on_irq)
+static void fill_rx_bufs(void)
 {
     ring_ctx_t *ring = &rx;
     __sync_synchronize();
@@ -214,18 +199,7 @@ static void fill_rx_bufs(bool on_irq)
         void *cookie = NULL;
         uintptr_t phys = alloc_rx_buf(MAX_PACKET_SIZE, &cookie);
         if (!phys) {
-            if (on_irq) {
-                // print("RX available ring empty ON IRQ\n");
-            } else {
-                // print("RX avaible ring empty not on irq\n");
-            }
-            // debug_write_word(1);
-            // assert(debug_read_word() == 1);
-            alloc_rx_buf_empty = true;
             break;
-        } else {
-            alloc_rx_buf_empty = false;
-            // debug_write_word(0);
         }
         uint16_t stat = RXD_EMPTY;
         int idx = ring->tail;
@@ -311,10 +285,6 @@ handle_rx(volatile struct enet_regs *eth)
      * by caller before the notify causes a context switch.
      */
     if (num) {
-        // assert(!ring_empty(rx_ring.used_ring));
-        // print("ETH| rx_ring.used_ring: not empty\n");
-        // puthex64(ring_size(rx_ring.used_ring));
-        // print("\n");
         sel4cp_notify(RX_CH);
     }
 }
@@ -436,10 +406,6 @@ complete_tx(volatile struct enet_regs *eth)
             int err = enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
             assert(!err);
             enqueued++;
-
-            if (has_received_pp) {
-                has_enqueued_avail_tx_since_pp = true;
-            }
         }
     }
 
@@ -449,9 +415,6 @@ complete_tx(volatile struct enet_regs *eth)
     }
 
     if (was_empty && enqueued) {
-        if (has_received_pp) {
-            has_notified_mux_tx_since_pp = true;
-        }
         sel4cp_notify(TX_CH);
     }
 
@@ -473,13 +436,11 @@ handle_eth(volatile struct enet_regs *eth)
 
     while (e & irq_mask) {
         if (e & NETIRQ_TXF) {
-            num_tx_irqs += 1;
             complete_tx(eth);
         }
         if (e & NETIRQ_RXF) {
-            num_rx_irqs += 1;
             handle_rx(eth);
-            fill_rx_bufs(true);
+            fill_rx_bufs();
         }
         if (e & NETIRQ_EBERR) {
             print("Error: System bus/uDMA");
@@ -590,7 +551,7 @@ void init_post()
     ring_init(&rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 0);
     ring_init(&tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 0);
 
-    fill_rx_bufs(false);
+    fill_rx_bufs();
     print(sel4cp_name);
     print(": init complete -- waiting for interrupt\n");
     sel4cp_notify(INIT);
@@ -630,29 +591,6 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     //         break;
     // }
     // return sel4cp_msginfo_new(0, 0);
-
-    print("ETH DRIVER: rx_ring.avail_ring ");
-    puthex64(ring_size(rx_ring.avail_ring));
-    print("\n rx_ring.used_ring ");
-    puthex64(ring_size(rx_ring.used_ring));
-    print("\n tx_ring.avail_ring ");
-    puthex64(ring_size(tx_ring.avail_ring));
-    print("\n tx_ring.used_ring ");
-    puthex64(ring_size(tx_ring.used_ring));
-    print("\n\n");
-    has_received_pp = true;
-    // if (has_enqueued_avail_tx_since_pp) {
-    //     print("Have enqueue avail since getting PPs\n");
-    // }
-    // if (has_notified_mux_tx_since_pp) {
-    //     print("Have notified MUX TX since getting PPs\n");
-    // }
-    // print("Number of RX IRQs received: ");
-    // puthex64(num_rx_irqs);
-    // print("Number of TX IRQs received: ");
-    // puthex64(num_tx_irqs);
-    // print("\n");
-    return sel4cp_msginfo_new(0, 0);
 }
 
 void notified(sel4cp_channel ch)
@@ -666,16 +604,13 @@ void notified(sel4cp_channel ch)
             break;
         case RX_CH:
             if (initialised) {
-                fill_rx_bufs(false);
+                fill_rx_bufs();
             } else {
                 init_post();
                 initialised = true;
             }
             break;
         case TX_CH:
-            if (has_received_pp) {
-                has_received_tx_irq_since_pp = true;
-            }
             handle_tx(eth);
             break;
         default:
