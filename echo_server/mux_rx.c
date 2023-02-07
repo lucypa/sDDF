@@ -79,9 +79,6 @@ int get_client(uintptr_t dma_vaddr) {
     return 0;
 }
 
-static uint64_t ring_size_before = 0;
-static uint64_t ring_size_after = 0;
-
 /*
 Loop over driver and insert all used rx buffers to appropriate client queues.
 */
@@ -165,9 +162,6 @@ bool process_rx_complete(void)
 
     return done_work;
 }
-
-static uint64_t num_invoked = 0;
-static uint64_t num_enqueued = 0;
 
 // Loop over all client rings and return unused rx buffers to the driver
 bool process_rx_free(void)
