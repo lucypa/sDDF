@@ -211,17 +211,6 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     // sel4cp_mr_set(0, lower);
     // sel4cp_mr_set(1, upper);
     // return sel4cp_msginfo_new(0, 2);
-
-    print("MUX RX: rx_avail_drv ");
-    puthex64(ring_size(state.rx_ring_drv.avail_ring));
-    print("\n rx_used_drv ");
-    puthex64(ring_size(state.rx_ring_drv.used_ring));
-    print("\n rx_avail_clients[0] ");
-    puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-    print("\n rx_used_clients[0] ");
-    puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-    print("\n\n");
-    return sel4cp_msginfo_new(0, 0);
 }
 
 void notified(sel4cp_channel ch)

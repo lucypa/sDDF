@@ -101,25 +101,6 @@ void notified(sel4cp_channel ch)
     }
 }
 
-seL4_MessageInfo_t
-protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
-{
-    print("MUX TX: tx_avail_drv ");
-    puthex64(ring_size(state.tx_ring_drv.avail_ring));
-    print("\n tx_used_drv ");
-    puthex64(ring_size(state.tx_ring_drv.used_ring));
-    print("\n tx_ring_clients[0].avail_ring ");
-    puthex64(ring_size(state.tx_ring_clients[0].avail_ring));
-    print("\n tx_ring_clients[0].used_ring ");
-    puthex64(ring_size(state.tx_ring_clients[0].used_ring));
-    print("\n\n");
-    has_received_pp = true;
-    if (has_received_pp && has_notified_client_since_pp) {
-        print("MUXTX| has notified client since PP!\n");
-    }
-    return sel4cp_msginfo_new(0, 0);
-}
-
 void init(void)
 {
     /* Set up shared memory regions */

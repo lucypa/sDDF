@@ -104,21 +104,6 @@ void process_rx_complete(void)
     }
 }
 
-seL4_MessageInfo_t
-protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
-{
-    print("COPY: rx_avail_mux ");
-    puthex64(ring_size(rx_ring_mux.avail_ring));
-    print("\n rx_used_mux ");
-    puthex64(ring_size(rx_ring_mux.used_ring));
-    print("\n rx_avail_cli ");
-    puthex64(ring_size(rx_ring_cli.avail_ring));
-    print("\n rx_used_cli ");
-    puthex64(ring_size(rx_ring_cli.used_ring));
-    print("\n\n");
-    return sel4cp_msginfo_new(0, 0);
-}
-
 void notified(sel4cp_channel ch)
 {
     if (!initialised) {
