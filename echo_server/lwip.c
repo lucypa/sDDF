@@ -105,8 +105,6 @@ dump_mac(uint8_t *mac)
     sel4cp_dbg_putc('\n');
 }
 
-static uint64_t enqueued_avail_since_empty = 0;
-
 static bool notify_rx = false;
 
 static inline void return_buffer(ethernet_buffer_t *buffer)
@@ -116,18 +114,7 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
     bool was_empty = ring_empty(state.rx_ring.avail_ring);
     int err = enqueue_avail(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
-    enqueued_avail_since_empty += 1;
     if (was_empty) {
-        // have_signal = true;
-        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + RX_CH);
-        // print("LWIP| notify copy =====! ");
-        // print("enqueued_avail_since_empty: ");
-        // puthex64(enqueued_avail_since_empty);
-        // print("\n");
-        enqueued_avail_since_empty = 0;
-        // sel4cp_notify(RX_CH);
-        // sel4cp_notify_delayed(RX_CH);
         notify_rx = true;
     }
 }
@@ -455,9 +442,6 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case RX_CH:
-            // If we've been notified by the COPY component, we should
-            // have something to consume in the used ring.
-            // assert(!ring_empty(state.rx_ring.used_ring));
             process_rx_queue();
             break;
         case INIT:
@@ -476,11 +460,6 @@ void notified(sel4cp_channel ch)
              */
             if (!ring_empty(state.rx_ring.used_ring))
                 process_rx_queue();
-            // print("Lwip incoming: ");
-            // puthex64(incoming);
-            // print("\nLwip outgoing: ");
-            // puthex64(outgoing);
-            // print("\n");
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
