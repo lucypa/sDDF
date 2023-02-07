@@ -49,11 +49,7 @@ void process_tx_ready(void)
     }
 
     if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
-        // have_signal = true;
-        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + DRIVER_CH);
         sel4cp_notify_delayed(DRIVER_CH);
-        // sel4cp_notify(DRIVER_CH);
     }
 }
 
