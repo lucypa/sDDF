@@ -25,9 +25,8 @@ ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 int initialised = 0;
 
-bool process_rx_complete(void)
+void process_rx_complete(void)
 {
-    bool done_work = false;
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
     // bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
     uint64_t mux_avail_original_size = ring_size(rx_ring_mux.avail_ring);
@@ -85,8 +84,6 @@ bool process_rx_complete(void)
         err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
         assert(!err);
 
-        done_work = true;
-
         enqueued += 1;
     }
 
@@ -107,8 +104,6 @@ bool process_rx_complete(void)
         // assert(!ring_empty(rx_ring_mux.avail_ring));
         sel4cp_notify_delayed(MUX_RX_CH);
     }
-
-    return done_work;
 }
 
 seL4_MessageInfo_t
