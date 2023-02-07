@@ -27,7 +27,6 @@ int initialised = 0;
 
 bool process_rx_complete(void)
 {
-    // print("copy: process_rx_complete\n");
     bool done_work = false;
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
     // bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
@@ -38,24 +37,6 @@ bool process_rx_complete(void)
        2. There are buffers from the client to copy.
     */
     uint64_t enqueued = 0;
-    // if (!(!ring_empty(rx_ring_mux.used_ring) &&
-    //         !ring_empty(rx_ring_cli.avail_ring) &&
-    //         !ring_full(rx_ring_mux.avail_ring) &&
-    //         !ring_full(rx_ring_cli.used_ring))) {
-
-    //     if (ring_empty(rx_ring_mux.used_ring)) {
-    //         print("COPY| cond 1 failed");
-    //     }
-    //     if (ring_empty(rx_ring_cli.avail_ring)) {
-    //         print("COPY| cond 2 failed");
-    //     }
-    //     if (ring_full(rx_ring_mux.avail_ring)) {
-    //         print("COPY| cond 3 failed");
-    //     }
-    //     if (ring_full(rx_ring_cli.used_ring)) {
-    //         print("COPY| cond 4 failed");
-    //     }
-    // }
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
             !ring_full(rx_ring_mux.avail_ring) &&
@@ -103,8 +84,6 @@ bool process_rx_complete(void)
         /* enqueue the old buffer back to dev_rx_ring.avail so the driver can use it again. */
         err = enqueue_avail(&rx_ring_mux, m_addr, BUF_SIZE, cookie);
         assert(!err);
-        // @ivanv: this assert was going off, which is unexpected
-        // assert(!ring_empty(rx_ring_mux.avail_ring));
 
         done_work = true;
 
@@ -120,24 +99,15 @@ bool process_rx_complete(void)
     //     sel4cp_notify(MUX_RX_CH);
     // }
 
-        // @ivanv: this should be an sel4cp syscall rather than dealing with these globals in user code
-        // have_signal = true;
-        // signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-        // signal = (BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH);
-        // print("COPY| notifying lwip\n");
     if (cli_used_was_empty && enqueued) {
         sel4cp_notify(CLIENT_CH);
     }
 
-    // if ((mux_was_full || mux_avail_was_empty) && done_work) {
     if ((mux_avail_original_size == 0 || mux_was_full || mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) && enqueued) {
         // assert(!ring_empty(rx_ring_mux.avail_ring));
         sel4cp_notify_delayed(MUX_RX_CH);
     }
 
-    // print("COPY| processed ");
-    // puthex64(processed);
-    // print("\n");
     return done_work;
 }
 
@@ -159,33 +129,26 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 void notified(sel4cp_channel ch)
 {
     if (!initialised) {
-        // propogate this down the line to ensure everyone is
-        // initliased in correct order.
+        /*
+         * Propogate this down the line to ensure everyone is
+         * initliased in correct order.
+         */
         sel4cp_notify(MUX_RX_CH);
         initialised = 1;
-        // print("COPY: init finished\n");
         return;
     }
-    // we have one job.
-    if (ch == CLIENT_CH) {
-        // assert(!ring_empty(rx_ring_cli.avail_ring));
-    } else if (ch == MUX_RX_CH) {
-        // assert(!ring_empty(rx_ring_mux.used_ring));
-        // if (!ring_empty(rx_ring_mux.used_ring)) {
-        //     print("COPY| size of rx_ring_cli.used_ring: ");
-        //     puthex64(ring_size(rx_ring_cli.used_ring));
-        //     print()
-        // }
+
+    if (ch == CLIENT_CH || ch == MUX_RX_CH) {
+        /* We have one job. */
+        process_rx_complete();
     } else {
-        print("COPY| unexpected notification!\n");
+        print("COPY|ERROR: unexpected notification!\n");
         assert(0);
     }
-    process_rx_complete();
 }
 
 void init(void)
 {
-    // print("COPY: init started\n");
     /* Set up shared memory regions */
     // @ivanv: Having asynchronous initialisation is extremely fragile, we need to find a better way.
     ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 1);
@@ -195,11 +158,6 @@ void init(void)
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_mux + (BUF_SIZE * i);
         int err = enqueue_avail(&rx_ring_mux, addr, BUF_SIZE, NULL);
-        if (err) {
-            print("COPY INIT: i is: ");
-            puthex64(i);
-            print("\n");
-        }
         assert(!err);
     }
 
