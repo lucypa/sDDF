@@ -108,7 +108,7 @@ void process_rx_complete(void)
             int err = enqueue_used(&state.rx_ring_clients[client], addr, len, cookie);
             assert(!err);
             if (err) {
-                print("Mux_rx enqueue used failed. Ring full\n");
+                print("MUX RX|ERROR: failed to enqueue onto used ring\n");
             }
             /* We don't want to signal the copier until we know there is something
                in the used ring and the avail ring is also not empty. */
