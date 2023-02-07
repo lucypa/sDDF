@@ -137,7 +137,9 @@ void notified(sel4cp_channel ch)
         /* We have one job. */
         process_rx_complete();
     } else {
-        print("COPY|ERROR: unexpected notification!\n");
+        print("COPY|ERROR: unexpected notification from channel: ");
+        puthex64(ch);
+        print("\n");
         assert(0);
     }
 }
