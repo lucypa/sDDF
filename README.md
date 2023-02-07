@@ -20,7 +20,7 @@ https://developer.arm.com/-/media/Files/downloads/gnu-a/10.2-2020.11/binrel/gcc-
     $ cd echo_server
     $ make BUILD_DIR=<path/to/build> \
         SEL4CP_SDK=<path/to/core/platform/sdk> \
-		SEL4CP_BOARD=imx8mm_evk SEL4CP_CONFIG=(release/debug)
+        SEL4CP_BOARD=imx8mm_evk SEL4CP_CONFIG=(release/debug)
 ```
 
 ## Benchmarking
