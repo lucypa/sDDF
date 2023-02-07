@@ -14,7 +14,6 @@ uintptr_t uart_base;
 #define NUM_CLIENTS 1
 
 #define COPY_CH 0
-/* Channel ID for driver, only used for initialisation. */
 #define DRIVER_CH 1
 
 #define ETHER_MTU 1500
