@@ -133,7 +133,7 @@ static void interface_free_buffer(struct pbuf *buf)
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
 
     if (custom_pbuf->magic != PBUF_MAGIC) {
-        print("MAGIC ASSERTION FAILED\n");
+        print("LWIP|ERROR: MAGIC ASSERTION FAILED\n");
     }
     SYS_ARCH_PROTECT(old_level);
     return_buffer(custom_pbuf->buffer);
@@ -215,7 +215,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     err_t ret = ERR_OK;
 
     if (p->tot_len > BUF_SIZE) {
-        print("lwip_eth_send total length > BUF SIZE\n");
+        print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
         return ERR_MEM;
     }
 
@@ -240,7 +240,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
     if (err) {
-        print("ARM Vspace clean failed: ");
+        print("LWIP|ERROR: ARM VSpace clean failed: ");
         puthex64(err);
         print("\n");
     }
@@ -287,7 +287,7 @@ void process_rx_queue(void)
 
         if (state.netif.input(p, &state.netif) != ERR_OK) {
             // If it is successfully received, the receiver controls whether or not it gets freed.
-            print("netif.input() != ERR_OK");
+            print("LWIP|ERROR: netif.input() != ERR_OK");
             pbuf_free(p);
         }
 
