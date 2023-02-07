@@ -28,7 +28,6 @@ typedef struct state {
 state_t state;
 int initialised = 0;
 uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-uint64_t total = 0;
 uint64_t dropped = 0;
 
 static void
@@ -87,7 +86,6 @@ void process_rx_complete(void)
     int notify_clients[NUM_CLIENTS] = {0};
     bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
-        total++;
         uintptr_t addr = 0;
         unsigned int len = 0;
         void *cookie = NULL;
