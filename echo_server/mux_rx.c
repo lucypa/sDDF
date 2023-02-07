@@ -190,26 +190,8 @@ bool process_rx_free(void)
             enqueued += 1;
         }
     }
+
     if ((original_size == 0 || original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring)) && enqueued != 0) {
-        // print("MUX RX: notify driver in process_rx_free\n");
-        // print("MUX RX (before notify): client[0].avail ");
-        // puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-        // print("\n client[0].used ");
-        // puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-        // print("\n driver.avail ");
-        // puthex64(ring_size(state.rx_ring_drv.avail_ring));
-        // print("\n driver.used ");
-        // puthex64(ring_size(state.rx_ring_drv.used_ring));
-        // print("\n\n");
-        // print("MUX|RX: notifying driver!\n");
-        // print("MUX RX: ADDED RX AVAIL\n");
-        // print("     num_enqueued: ");
-        // puthex64(num_enqueued);
-        // print("\n");
-        // print("     num_invoked: ");
-        // puthex64(num_invoked);
-        // print("\n");
-        // sel4cp_notify(DRIVER_CH);
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
@@ -251,62 +233,15 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 void notified(sel4cp_channel ch)
 {
     if (initialised) {
-        if (ch == COPY_CH) {
-            // We should only be notified by the copy component
-            // if there is something placed in the available ring.
-        } else if (ch == DRIVER_CH) {
-            // if (ring_empty(state.rx_ring_drv.used_ring)) {
-            //     print("MUX| rx_ring_drv.used_ring size: ");
-            //     puthex64(ring_size(state.rx_ring_drv.used_ring));
-            //     print("\n");
-            // }
-            // if (ring_empty(state.rx_ring_drv.used_ring)) {
-            //     print("assert went off!\n");
-            //     print("write_idx: ");
-            //     puthex64(state.rx_ring_drv.used_ring->write_idx);
-            //     print(" read_idx: ");
-            //     puthex64(state.rx_ring_drv.used_ring->read_idx);
-            //     print("\n");
-            // }
-            // assert(!ring_empty(state.rx_ring_drv.used_ring));
-            // ring_size_before = ring_size(satte.rx_ring_drv.used_ring);
+        if (ch == COPY_CH || ch == DRIVER_CH) {
+            process_rx_complete();
+            process_rx_free();
         } else {
-            print("MUX RX: unexpected notification!\n");
+            print("MUX RX|ERROR: unexpected notification from channel: ");
+            puthex64(ch);
+            print("\n");
+            assert(0);
         }
-        // static unsigned counter = 0;
-        // if (++counter % 0x1000U == 0) {
-        //     print("MUX RX (BEFORE): client[0].avail ");
-        //     puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-        //     print("\n client[0].used ");
-        //     puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-        //     print("\n driver.avail ");
-        //     puthex64(ring_size(state.rx_ring_drv.avail_ring));
-        //     print("\n driver.used ");
-        //     puthex64(ring_size(state.rx_ring_drv.used_ring));
-        //     print("\n\n");
-        // }
-        process_rx_complete();
-        process_rx_free();
-        // if (!complete_done_work && !free_done_work) {
-            // print("MUX RX| no work done ");
-            // if (ch == COPY_CH) {
-            //     print("from copy\n");
-            // }
-            // if (ch == DRIVER_CH) {
-            //     print("from driver\n");
-            // }
-        // }
-        // if (counter % 0x1000U == 0) {
-        //     print("MUX RX (AFTER): client[0].avail ");
-        //     puthex64(ring_size(state.rx_ring_clients[0].avail_ring));
-        //     print("\n client[0].used ");
-        //     puthex64(ring_size(state.rx_ring_clients[0].used_ring));
-        //     print("\n driver.avail ");
-        //     puthex64(ring_size(state.rx_ring_drv.avail_ring));
-        //     print("\n driver.used ");
-        //     puthex64(ring_size(state.rx_ring_drv.used_ring));
-        //     print("\n\n");
-        // }
     } else {
         process_rx_free();
         sel4cp_notify(DRIVER_CH);
