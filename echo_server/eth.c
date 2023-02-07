@@ -597,9 +597,11 @@ void notified(sel4cp_channel ch)
     switch(ch) {
         case IRQ_CH:
             handle_eth(eth);
-            have_signal = true;
-            signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
-            signal = (BASE_IRQ_CAP + IRQ_CH);
+            /*
+             * Delay calling into the kernel to ack the IRQ until the next loop
+             * in the seL4CP event handler loop.
+             */
+            sel4cp_irq_ack_delayed(ch);
             break;
         case RX_CH:
             if (initialised) {
