@@ -41,7 +41,7 @@
 #define NETIRQ_TS_AVAIL (1UL << 16) /* Transmit Timestamp Available    */
 #define NETIRQ_TS_TIMER (1UL << 15) /* Timestamp Timer                 */
 
-#define IRQ_MASK    (NETIRQ_RXF | NETIRQ_TXF | NETIRQ_EBERR)
+#define IRQ_MASK        (NETIRQ_RXF | NETIRQ_TXF | NETIRQ_EBERR)
 
 #define RXD_EMPTY       (1UL << 15)
 #define WRAP            (1UL << 13)
