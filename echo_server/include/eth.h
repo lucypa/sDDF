@@ -28,7 +28,7 @@
 #define ECR_SPEED       (1UL << 5) /* Enable 1000Mbps */
 #define PAUSE_OPCODE_FIELD (1UL << 16)
 #define TCR_FDEN        (1UL << 2) /* Full duplex enable */
-#define TX_ICEN         (1UL << 31)
+#define ICEN            (1UL << 31) /* enable irq coalescence */
 
 /*
  * Section 11.5.5.1 - Interrupt Event Register (ENET_EIR)
@@ -167,10 +167,14 @@ struct enet_regs {
     uint32_t palr;   /* 0E4 Physical Address Lower Register */
     uint32_t paur;   /* 0E8 Physical Address Upper Register */
     uint32_t opd;    /* 0EC Opcode/Pause Duration Register */
-    uint32_t txic0;
-    uint32_t txic1;
-    uint32_t txic2;
-    uint32_t res8[7];
+    uint32_t txic0;  /* 0xf0 Tx Interrupt Coalescing ring 0 */
+    uint32_t txic1;  /* 0xf4 Tx Interrupt Coalescing ring 1 */
+    uint32_t txic2;  /* 0xf8 Tx Interrupt Coalescing ring 2 */
+    uint32_t res8[1];
+    uint32_t rxic0;  /* 0x100 Rx Interrupt Coalescing ring 0 */
+    uint32_t rxic1;  /* 0x104 Rx Interrupt Coalescing ring 0 */
+    uint32_t rxic2;  /* 0x108 Rx Interrupt Coalescing ring 0 */
+    uint32_t res8a[3];
     uint32_t iaur;   /* 118 Descriptor Individual Upper Address Register */
     uint32_t ialr;   /* 11C Descriptor Individual Lower Address Register */
     uint32_t gaur;   /* 120 Descriptor Group Upper Address Register */
