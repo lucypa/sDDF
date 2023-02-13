@@ -511,7 +511,7 @@ eth_setup(void)
     eth->opd = PAUSE_OPCODE_FIELD;
 
     /* coalesce transmit IRQs to batches of 128 */
-    eth->txic0 = TX_ICEN | ICFT(128) | 0xFF;
+    eth->txic0 = ICEN | ICFT(128) | 0xFF;
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
     eth->tfwr = 0;
