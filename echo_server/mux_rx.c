@@ -67,15 +67,15 @@ int get_client(uintptr_t dma_vaddr) {
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (compare_mac(dest_addr, state.mac_addrs[client]) == 0) {
             return client;
-        } else if (compare_mac(dest_addr, broadcast) == 0) {
+        }
+        if (compare_mac(dest_addr, broadcast) == 0) {
             // broadcast packet, send the packet to the first client to handle.
             // This is temporary, eventually we will have a different
             // component to deal with this.
             return 0;
         }
     }
-    // @ivanv: we return 0 just for safety, deal with this later.
-    return 0;
+    return -1;
 }
 
 /*
