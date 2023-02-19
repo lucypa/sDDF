@@ -200,10 +200,6 @@ void init(void)
 {
     sel4bench_init();
     seL4_Word n_counters = sel4bench_get_num_counters();
-    // @ivanv: Unused variable, not sure if needed so I won't delete but comment
-    // it out to remove warning.
-    // int n_chunks = DIV_ROUND_UP(ARRAY_SIZE(benchmarking_events), n_counters);
-
 
     counter_bitfield_t mask = 0;
 
