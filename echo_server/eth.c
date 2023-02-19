@@ -38,8 +38,6 @@ bool initialised = false;
 #define PACKET_BUFFER_SIZE  2048
 #define MAX_PACKET_SIZE     1536
 
-// @ivanv: These depend on the value of SIZE in shared_ringbuffer.h right?
-// Should be some kind of static assert here
 #define RX_COUNT 256
 #define TX_COUNT 256
 
@@ -408,7 +406,6 @@ complete_tx(volatile struct enet_regs *eth)
         }
     }
 
-    // @ivanv: commment why we do this.
     if (!ring_empty(tx_ring.used_ring)) {
         handle_tx(eth);
     }

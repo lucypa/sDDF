@@ -130,7 +130,6 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    // @ivanv: Having asynchronous initialisation is extremely fragile, we need to find a better way.
     ring_init(&rx_ring_mux, (ring_buffer_t *)rx_avail_mux, (ring_buffer_t *)rx_used_mux, NULL, 1);
     ring_init(&rx_ring_cli, (ring_buffer_t *)rx_avail_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
 
