@@ -101,8 +101,7 @@ void process_rx_complete(void)
 
         // Get MAC address and work out which client it is.
         int client = get_client(addr);
-        // @ivanv: should check that there is space before enqueueing?
-        if (client >= 0) {
+        if (client >= 0 && !ring_full(state.rx_ring_clients[client].used_ring)) {
             /* enqueue it. */
             int was_empty = ring_empty(state.rx_ring_clients[client].used_ring);
             int err = enqueue_used(&state.rx_ring_clients[client], addr, len, cookie);

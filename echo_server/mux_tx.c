@@ -34,8 +34,7 @@ void process_tx_ready(void)
     uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
 
-    // @ivanv: should check that driver TX ring has room
-    while (!ring_empty(state.tx_ring_clients[0].used_ring)) {
+    while (!ring_empty(state.tx_ring_clients[0].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
