@@ -14,9 +14,6 @@ uintptr_t uart_base;
 #define NUM_CLIENTS 1
 #define DRIVER_CH 1
 
-static bool has_received_pp = false;
-static bool has_notified_client_since_pp = false;
-
 typedef struct state {
     /* Pointers to shared buffers */
     ring_handle_t tx_ring_drv;
@@ -57,8 +54,8 @@ void process_tx_ready(void)
  * the client. This will notify the client if we have moved buffers
  * around and the client's TX available ring was already empty.
  */
-// TODO: We need a way of knowing which client
-// this buffer originated from.
+// TODO: Use the address range to determine which client
+// this buffer originated from to return it to the correct one. 
 void process_tx_complete(void)
 {
     bool was_empty = ring_empty(state.tx_ring_clients[0].avail_ring);
@@ -75,10 +72,6 @@ void process_tx_complete(void)
     }
 
     if (enqueued && was_empty) {
-        assert(!ring_empty(state.tx_ring_clients[0].avail_ring));
-        if (has_received_pp) {
-            has_notified_client_since_pp = true;
-        }
         sel4cp_notify(CLIENT_CH);
     }
 }
