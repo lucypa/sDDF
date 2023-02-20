@@ -41,7 +41,6 @@ uintptr_t uart_base;
 
 static bool notify_tx = false;
 
-#define PBUF_MAGIC (0x1234123241234ULL)
 typedef enum {
     ORIGIN_RX_QUEUE,
     ORIGIN_TX_QUEUE,
@@ -82,7 +81,6 @@ uint64_t outgoing = 0;
 typedef struct lwip_custom_pbuf {
     struct pbuf_custom custom;
     ethernet_buffer_t *buffer;
-    uint64_t magic;
 } lwip_custom_pbuf_t;
 LWIP_MEMPOOL_DECLARE(
     RX_POOL,
@@ -132,9 +130,6 @@ static void interface_free_buffer(struct pbuf *buf)
 
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
 
-    if (custom_pbuf->magic != PBUF_MAGIC) {
-        print("LWIP|ERROR: MAGIC ASSERTION FAILED\n");
-    }
     SYS_ARCH_PROTECT(old_level);
     return_buffer(custom_pbuf->buffer);
     LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
@@ -157,7 +152,6 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
     // custom_pbuf->state = state;
     custom_pbuf->buffer = buffer;
     custom_pbuf->custom.custom_free_function = interface_free_buffer;
-    custom_pbuf->magic = PBUF_MAGIC;
 
     return pbuf_alloced_custom(
         PBUF_RAW,
