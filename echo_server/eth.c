@@ -229,11 +229,12 @@ handle_rx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &rx;
     unsigned int head = ring->head;
     int num = 0;
+    int was_empty = ring_empty(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
         /*
-         * we didn't process any packets because the queues are full
+         * we can't process any packets because the queues are full
          * so disable Rx irqs.
          */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
@@ -276,11 +277,11 @@ handle_rx(volatile struct enet_regs *eth)
     }
 
     /* Notify client (only if we have actually processed a packet
-     * and  the client hasn't already been notified!)
+     * and the client hasn't already been notified!)
      * Driver runs at highest priority, so buffers will be refilled
      * by caller before the notify causes a context switch.
      */
-    if (num) {
+    if (num && was_empty) {
         sel4cp_notify(RX_CH);
     }
 }
@@ -362,7 +363,7 @@ complete_tx(volatile struct enet_regs *eth)
 
     int was_empty = ring_empty(tx_ring.avail_ring);
 
-    while (head != ring->tail) {
+    while (head != ring->tail && !ring_full(tx_ring.avail_ring)) {
         if (0 == cnt) {
             cnt = tx_lengths[head];
             if ((0 == cnt) || (cnt > TX_COUNT)) {
@@ -392,7 +393,7 @@ complete_tx(volatile struct enet_regs *eth)
             head = 0;
         }
 
-        if (0 == --cnt && !ring_full(tx_ring.avail_ring)) {
+        if (0 == --cnt) {
             ring->head = head;
             /* race condition if add/remove is not synchronized. */
             ring->remain += cnt_org;
@@ -417,7 +418,7 @@ complete_tx(volatile struct enet_regs *eth)
      * zero, then there is some kind of overflow or data corruption. The number
      * of tx descriptors holding data can't exceed the space in the ring.
      */
-    if (0 != cnt) {
+    if (0 != cnt && ring->head == ring->tail) {
         print("head reached tail, but cnt!= 0");
     }
 }
@@ -524,7 +525,7 @@ eth_setup(void)
     /* Size of max eth packet size */
     eth->mrbr = MAX_PACKET_SIZE;
 
-    eth->rcr = RCR_MAX_FL(1518) | RCR_RGMII_EN | RCR_MII_MODE;// | RCR_PROMISCUOUS;
+    eth->rcr = RCR_MAX_FL(1518) | RCR_RGMII_EN | RCR_MII_MODE | RCR_PROMISCUOUS;
     eth->tcr = TCR_FDEN;
 
     /* set speed */
