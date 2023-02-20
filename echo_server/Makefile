@@ -53,7 +53,9 @@ CFLAGS += -I$(BOARD_DIR)/include \
 	-I$(LWIPDIR)/include \
 	-I$(LWIPDIR)/include/ipv4 \
 	-I$(RINGBUFFERDIR)/include \
-	-I$(BENCHDIR)/include
+	-I$(BENCHDIR)/include \
+	-MD \
+	-MP
 
 # COREFILES, CORE4FILES: The minimum set of files needed for lwIP.
 COREFILES=$(LWIPDIR)/core/init.c \
@@ -100,10 +102,14 @@ COPY_OBJS := copy.o libsharedringbuffer/shared_ringbuffer.o
 BENCH_OBJS := benchmark/benchmark.o
 IDLE_OBJS := benchmark/idle.o
 
+DEPS := $(addprefix $(BUILD_DIR)/, $(ETH_OBJS:.o=.d) $(MUX_RX_OBJS:.o=.d) $(MUX_TX_OBJS:.o=.d)\
+	$(COPY_OBJS:.o=.d) $(BENCH_OBJS:.o=.d) $(IDLE_OBJS:.o=.d) \
+	$(SERIAL_OBJS:.o=.d))
+
 all: directories $(IMAGE_FILE)
 
-$(BUILD_DIR)/%.o: %.c Makefile
-	$(CC) -c $(CFLAGS) $< -o $@
+$(BUILD_DIR)/%.d $(BUILD_DIR)/%.o: %.c Makefile
+	$(CC) -c $(CFLAGS) $< -o $(BUILD_DIR)/$*.o
 
 $(BUILD_DIR)/%.o: %.s Makefile
 	$(AS) -g3 -mcpu=$(CPU) $< -o $@
@@ -143,16 +149,11 @@ directories:
 	$(shell mkdir -p $(BUILD_DIR)/lwip/src/core) 	\
 	$(shell mkdir -p $(BUILD_DIR)/lwip/src/core/ipv4) \
 	$(shell mkdir -p $(BUILD_DIR)/lwip/src/netif)	\
-    $(shell mkdir -p $(BUILD_DIR)/libsharedringbuffer)	\
+	$(shell mkdir -p $(BUILD_DIR)/libsharedringbuffer)	\
 	$(shell mkdir -p $(BUILD_DIR)/benchmark)	\
 
 clean:
 	rm -f *.o *.elf .depend*
 	find . -name \*.o |xargs --no-run-if-empty rm
 
-depend dep: .depend
-
-include .depend
-
-.depend: $(LWIPFILES)
-	$(CC) $(CFLAGS) -MM $^ > .depend || rm -f .depend
+-include $(DEPS)
