@@ -29,6 +29,7 @@ state_t state;
 int initialised = 0;
 uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint64_t dropped = 0;
+ bool rx_avail_was_empty = false;
 
 static void
 dump_mac(uint8_t *mac)
@@ -84,7 +85,13 @@ int get_client(uintptr_t dma_vaddr) {
 void process_rx_complete(void)
 {
     int notify_clients[NUM_CLIENTS] = {0};
-    bool rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
+
+    /* To avoid notifying the driver twice, used this global variable to 
+        determine whether we need to notify the driver in 
+        process_rx_free() as we dropped some packets */
+    dropped = 0;
+    rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
+
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
         unsigned int len = 0;
@@ -109,9 +116,7 @@ void process_rx_complete(void)
             if (err) {
                 print("MUX RX|ERROR: failed to enqueue onto used ring\n");
             }
-            /* We don't want to signal the copier until we know there is something
-               in the used ring and the avail ring is also not empty. */
-            assert(!ring_empty(state.rx_ring_clients[client].used_ring));
+
             if (was_empty) {
                 notify_clients[client] = 1;
             }
@@ -119,6 +124,7 @@ void process_rx_complete(void)
             // no match, not for us, return the buffer to the driver.
             if (addr == 0) {
                 print("MUX RX|ERROR: Attempting to add NULL buffer to driver RX ring\n");
+                break;
             }
             err = enqueue_avail(&state.rx_ring_drv, addr, len, cookie);
             if (err) {
@@ -131,18 +137,8 @@ void process_rx_complete(void)
     /* Loop over bitmap and see who we need to notify. */
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (notify_clients[client]) {
-            // assert(!ring_empty(state.rx_ring_clients[client].avail_ring));
-            assert(!ring_empty(state.rx_ring_clients[client].used_ring));
             sel4cp_notify(client);
         }
-    }
-    /*
-     * Tell the driver if we've added some Rx bufs.
-     * Note this will force a context switch, as the driver runs at higher
-     * priority than the MUX
-     */
-    if (dropped && rx_avail_was_empty) {
-        sel4cp_notify_delayed(DRIVER_CH);
     }
 }
 
@@ -168,7 +164,18 @@ bool process_rx_free(void)
         }
     }
 
-    if ((original_size == 0 || original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring)) && enqueued != 0) {
+    /* We only want to notify the driver if the queue either was empty, or
+       it wasn't empty, but the driver interrupted us above and emptied it, 
+       and thus the number of packets we enqueued does not equal the ring_size now 
+       (So the driver could have missed an empty to full ntfn)
+       
+       We also could have enqueued packets into the available ring during 
+       process_rx_complete(), so we could have also missed this empty condition.
+       */
+    if (((original_size == 0 || 
+            original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring))
+            && enqueued != 0) ||
+            (dropped != && rx_avail_was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
@@ -198,38 +205,43 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 
 void notified(sel4cp_channel ch)
 {
-    if (initialised) {
-        if (ch == COPY_CH || ch == DRIVER_CH) {
-            process_rx_complete();
-            process_rx_free();
-        } else {
-            print("MUX RX|ERROR: unexpected notification from channel: ");
-            puthex64(ch);
-            print("\n");
-            assert(0);
-        }
-    } else {
+    if (!initialised) {
         process_rx_free();
         sel4cp_notify(DRIVER_CH);
         initialised = 1;
+        return;
+    }
+
+    if (ch == COPY_CH || ch == DRIVER_CH) {
+        process_rx_complete();
+        process_rx_free();
+    } else {
+        print("MUX RX|ERROR: unexpected notification from channel: ");
+        puthex64(ch);
+        print("\n");
+        assert(0);
     }
 }
 
 void init(void)
 {
     // set up client macs
-    /*state.mac_addrs[0][0] = 0x52;
+    // use a dummy one for our one client. 
+    state.mac_addrs[0][0] = 0x52;
     state.mac_addrs[0][1] = 0x54;
     state.mac_addrs[0][2] = 0x1;
     state.mac_addrs[0][3] = 0;
     state.mac_addrs[0][4] = 0;
-    state.mac_addrs[0][5] = 0;*/
-    state.mac_addrs[0][0] = 0;
+    state.mac_addrs[0][5] = 0;
+
+    // This is the legitimate hw address
+    // (can be useful when debugging). 
+    /*state.mac_addrs[0][0] = 0;
     state.mac_addrs[0][1] = 0x4;
     state.mac_addrs[0][2] = 0x9f;
     state.mac_addrs[0][3] = 0x5;
     state.mac_addrs[0][4] = 0xf8;
-    state.mac_addrs[0][5] = 0xcc;
+    state.mac_addrs[0][5] = 0xcc;*/
 
     /* Set up shared memory regions */
     ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_avail_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
