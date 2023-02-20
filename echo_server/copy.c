@@ -43,8 +43,6 @@ void process_rx_complete(void)
         err = dequeue_used(&rx_ring_mux, &m_addr, &m_len, &cookie);
         assert(!err);
         // get an available one from clients queue.
-        // TODO: Check the address we dequeue is sane and return
-        // it if not.
         err = dequeue_avail(&rx_ring_cli, &c_addr, &c_len, &cookie2);
         assert(!err);
         if (!c_addr ||
@@ -82,10 +80,15 @@ void process_rx_complete(void)
     }
 
     if (cli_used_was_empty && enqueued) {
-        sel4cp_notify(CLIENT_CH);
+        sel4cp_notify_delayed(CLIENT_CH);
     }
 
     if ((mux_avail_original_size == 0 || mux_was_full || mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) && enqueued) {
+        if (have_signal) {
+            // We need to notify the client, but this should
+            // happen first. 
+            sel4cp_notify(CLIENT);
+        }
         sel4cp_notify_delayed(MUX_RX_CH);
     }
 }
