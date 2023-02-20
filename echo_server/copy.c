@@ -83,11 +83,20 @@ void process_rx_complete(void)
         sel4cp_notify_delayed(CLIENT_CH);
     }
 
-    if ((mux_avail_original_size == 0 || mux_was_full || mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) && enqueued) {
+    /* We only want to signal the mux if the available queue was
+        empty and we enqueued something, or that the used queue was full and 
+        we dequeued something, OR 
+        potentially the mux pre-empted us (as it's higher prio) and emptied the queue
+        while we were enqueuing, and thus the OG size and number of packets we 
+        processed doesn't add up and the mux could potentially miss this 
+        empty -> non-empty transition. */
+    if ((mux_avail_original_size == 0 || mux_was_full || 
+            mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) 
+            && enqueued) {
         if (have_signal) {
             // We need to notify the client, but this should
             // happen first. 
-            sel4cp_notify(CLIENT);
+            sel4cp_notify(CLIENT_CH);
         }
         sel4cp_notify_delayed(MUX_RX_CH);
     }

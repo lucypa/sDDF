@@ -29,7 +29,7 @@ state_t state;
 int initialised = 0;
 uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint64_t dropped = 0;
- bool rx_avail_was_empty = false;
+bool rx_avail_was_empty = false;
 
 static void
 dump_mac(uint8_t *mac)
@@ -175,7 +175,7 @@ bool process_rx_free(void)
     if (((original_size == 0 || 
             original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring))
             && enqueued != 0) ||
-            (dropped != && rx_avail_was_empty)) {
+            (dropped != 0 && rx_avail_was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
