@@ -26,7 +26,7 @@ to the Makefile using the argument `TOOLCHAIN=<PREFIX>`.
     $ cd echo_server
     $ make BUILD_DIR=<path/to/build> \
         SEL4CP_SDK=<path/to/core/platform/sdk> \
-        SEL4CP_BOARD=imx8mm_evk SEL4CP_CONFIG=(release/debug)
+        SEL4CP_BOARD=imx8mm_evk SEL4CP_CONFIG=(benchmark/release/debug)
 ```
 
 ## Benchmarking
