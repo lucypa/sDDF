@@ -74,10 +74,11 @@ typedef struct state {
 } state_t;
 
 state_t state;
-uint64_t incoming = 0;
-uint64_t outgoing = 0;
 
-/* LWIP mempool declare literally just initialises an array big enough with the correct alignment */
+/* 
+ * LWIP mempool declare literally just initialises an array 
+ * big enough with the correct alignment 
+ */
 typedef struct lwip_custom_pbuf {
     struct pbuf_custom custom;
     ethernet_buffer_t *buffer;
@@ -108,7 +109,8 @@ static bool notify_rx = false;
 static inline void return_buffer(ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
-    the ring should never be full. */
+    the ring should never be full. 
+    FIXME: This full condition could change... */
     bool was_empty = ring_empty(state.rx_ring.avail_ring);
     int err = enqueue_avail(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
@@ -170,8 +172,6 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
  * @param length length of buffer required
  *
  */
-static uint64_t num_dequeues = 0;
-
 static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 {
     if (BUF_SIZE < length) {
@@ -188,7 +188,7 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
         print("LWIP|ERROR: TX available ring is empty!\n");
         return NULL;
     }
-    num_dequeues += 1;
+
     if (!buffer) {
         print("LWIP|ERROR: dequeued a null ethernet buffer\n");
         return NULL;
@@ -203,7 +203,6 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
-    outgoing++;
     /* Grab an available TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     err_t ret = ERR_OK;
@@ -212,8 +211,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
         print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
         return ERR_MEM;
     }
-
-    // state_t *state = (state_t *)netif->state;
 
     ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
     if (buffer == NULL) {
@@ -255,7 +252,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
 void process_rx_queue(void)
 {
-    int count = 0;
     while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
         incoming++;
         uintptr_t addr;
@@ -284,8 +280,6 @@ void process_rx_queue(void)
             print("LWIP|ERROR: netif.input() != ERR_OK");
             pbuf_free(p);
         }
-
-        count += 1;
     }
 }
 
@@ -331,6 +325,13 @@ static void netif_status_callback(struct netif *netif)
 
 static void get_mac(void)
 {
+    /* For now just use a dummy hardcoded mac address.*/
+    state.mac[0] = 0x52;
+    state.mac[1] = 0x54;
+    state.mac[2] = 0x1;
+    state.mac[3] = 0;
+    state.mac[4] = 0;
+    state.mac[5] = 0;
     /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
@@ -340,12 +341,6 @@ static void get_mac(void)
     state.mac[3] = palr & 0xff;
     state.mac[4] = paur >> 24;
     state.mac[5] = paur >> 16 & 0xff;*/
-    state.mac[0] = 0;
-    state.mac[1] = 0x4;
-    state.mac[2] = 0x9f;
-    state.mac[3] = 0x5;
-    state.mac[4] = 0xf8;
-    state.mac[5] = 0xcc;
 }
 
 void init_post(void)
@@ -464,6 +459,10 @@ void notified(sel4cp_channel ch)
     }
     if (notify_tx) {
         notify_tx = false;
-        sel4cp_notify(TX_CH);
+        if (!have_signal) {
+            sel4cp_notify_delayed(TX_CH);
+        } else {
+            sel4cp_notify(TX_CH);
+        }
     }
 }
