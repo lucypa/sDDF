@@ -572,21 +572,21 @@ void init(void)
 seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
-    // switch (ch) {
-    //     case INIT:
-    //         // return the MAC address.
-    //         sel4cp_mr_set(0, eth->palr);
-    //         sel4cp_mr_set(1, eth->paur);
-    //         return sel4cp_msginfo_new(0, 2);
-    //     case TX_CH:
-    //         handle_tx(eth);
-    //         break;
-    //     default:
-    //         sel4cp_dbg_puts("Received ppc on unexpected channel ");
-    //         puthex64(ch);
-    //         break;
-    // }
-    // return sel4cp_msginfo_new(0, 0);
+    switch (ch) {
+        case INIT:
+            // return the MAC address.
+            sel4cp_mr_set(0, eth->palr);
+            sel4cp_mr_set(1, eth->paur);
+            return sel4cp_msginfo_new(0, 2);
+        case TX_CH:
+            handle_tx(eth);
+            break;
+        default:
+            sel4cp_dbg_puts("Received ppc on unexpected channel ");
+            puthex64(ch);
+            break;
+    }
+    return sel4cp_msginfo_new(0, 0);
 }
 
 void notified(sel4cp_channel ch)
