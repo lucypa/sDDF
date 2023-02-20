@@ -107,7 +107,6 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
 {
     assert(buffer != 0);
     if (ring_full(ring)) {
-        print("ERROR: Attempting to enqueue to full ring\n");
         return -1;
     }
 
@@ -134,7 +133,6 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
 static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
     if (ring_empty(ring)) {
-        // print("ERROR: Attempting to dequeue from empty ring\n");
         return -1;
     }
 
