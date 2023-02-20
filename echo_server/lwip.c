@@ -253,7 +253,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 void process_rx_queue(void)
 {
     while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
-        incoming++;
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
