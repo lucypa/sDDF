@@ -434,8 +434,6 @@ void init(void)
     netif_set_default(&(state.netif));
 
     sel4cp_notify(RX_CH);
-
-    // debug_init();
 }
 
 void notified(sel4cp_channel ch)
