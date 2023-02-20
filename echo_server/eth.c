@@ -618,7 +618,4 @@ void notified(sel4cp_channel ch)
             assert(0);
             break;
     }
-    // if (ring_empty(rx_ring.used_ring)) {
-    //     enable_irqs(eth, IRQ_MASK);
-    // }
 }
