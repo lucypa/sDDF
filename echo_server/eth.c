@@ -181,7 +181,6 @@ alloc_rx_buf(size_t buf_size, void **cookie)
 
     /* Try to grab a buffer from the available ring */
     if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
-        // print("RX Available ring is empty\n");
         return 0;
     }
 
