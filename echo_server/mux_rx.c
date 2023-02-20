@@ -178,22 +178,22 @@ bool process_rx_free(void)
 seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
-    // if (ch >= NUM_CLIENTS) {
-    //     sel4cp_dbg_puts("Received ppc on unexpected channel ");
-    //     puthex64(ch);
-    //     return sel4cp_msginfo_new(0, 0);
-    // }
-    // // return the MAC address.
-    // uint32_t lower = (state.mac_addrs[ch][0] << 24) |
-    //                  (state.mac_addrs[ch][1] << 16) |
-    //                  (state.mac_addrs[ch][2] << 8) |
-    //                  (state.mac_addrs[ch][3]);
-    // uint32_t upper = (state.mac_addrs[ch][4] << 24) | (state.mac_addrs[ch][5] << 16);
-    // sel4cp_dbg_puts("Mux rx is sending mac: ");
-    // dump_mac(state.mac_addrs[ch]);
-    // sel4cp_mr_set(0, lower);
-    // sel4cp_mr_set(1, upper);
-    // return sel4cp_msginfo_new(0, 2);
+    if (ch >= NUM_CLIENTS) {
+        sel4cp_dbg_puts("Received ppc on unexpected channel ");
+        puthex64(ch);
+        return sel4cp_msginfo_new(0, 0);
+    }
+    // return the MAC address.
+    uint32_t lower = (state.mac_addrs[ch][0] << 24) |
+                     (state.mac_addrs[ch][1] << 16) |
+                     (state.mac_addrs[ch][2] << 8) |
+                     (state.mac_addrs[ch][3]);
+    uint32_t upper = (state.mac_addrs[ch][4] << 24) | (state.mac_addrs[ch][5] << 16);
+    sel4cp_dbg_puts("Mux rx is sending mac: ");
+    dump_mac(state.mac_addrs[ch]);
+    sel4cp_mr_set(0, lower);
+    sel4cp_mr_set(1, upper);
+    return sel4cp_msginfo_new(0, 2);
 }
 
 void notified(sel4cp_channel ch)
