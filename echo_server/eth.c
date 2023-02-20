@@ -418,7 +418,7 @@ complete_tx(volatile struct enet_regs *eth)
      * of tx descriptors holding data can't exceed the space in the ring.
      */
     if (0 != cnt) {
-        // print("head reached tail, but cnt!= 0");
+        print("head reached tail, but cnt!= 0");
     }
 }
 
