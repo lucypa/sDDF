@@ -26,14 +26,10 @@ int initialised = 0;
 void process_rx_complete(void)
 {
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
-    // bool mux_avail_was_empty = ring_empty(rx_ring_mux.avail_ring);
     uint64_t mux_avail_original_size = ring_size(rx_ring_mux.avail_ring);
     bool cli_used_was_empty = ring_empty(rx_ring_cli.used_ring);
-    /* We only want to copy buffers if meet both conditions:
-       1. There are buffers from the mux to copy to.
-       2. There are buffers from the client to copy.
-    */
     uint64_t enqueued = 0;
+    // We only want to copy buffers if all the dequeues and enqueues will be successful
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
             !ring_full(rx_ring_mux.avail_ring) &&
@@ -85,21 +81,11 @@ void process_rx_complete(void)
         enqueued += 1;
     }
 
-    // if ((mux_was_full || mux_avail_was_empty) && done_work) {
-    //     if (count % 100 == 0) {
-    //         // print("COPY has addition mux\n");
-    //         count = 0;
-    //     }
-    //     // assert(!ring_empty(rx_ring_mux.avail_ring));
-    //     sel4cp_notify(MUX_RX_CH);
-    // }
-
     if (cli_used_was_empty && enqueued) {
         sel4cp_notify(CLIENT_CH);
     }
 
     if ((mux_avail_original_size == 0 || mux_was_full || mux_avail_original_size + enqueued != ring_size(rx_ring_mux.avail_ring)) && enqueued) {
-        // assert(!ring_empty(rx_ring_mux.avail_ring));
         sel4cp_notify_delayed(MUX_RX_CH);
     }
 }
