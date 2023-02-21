@@ -108,7 +108,6 @@ OBJS := $(sort $(addprefix $(BUILD_DIR)/, $(ETH_OBJS) $(MUX_RX_OBJS) $(MUX_TX_OB
 DEPS := $(OBJS:.o=.d)
 
 all: $(IMAGE_FILE)
-	echo ${DEPS}
 -include $(DEPS)
 
 $(BUILD_DIR)/%.d $(BUILD_DIR)/%.o: %.c Makefile
