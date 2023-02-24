@@ -104,7 +104,7 @@ IDLE_OBJS := benchmark/idle.o
 
 OBJS := $(sort $(addprefix $(BUILD_DIR)/, $(ETH_OBJS) $(MUX_RX_OBJS) $(MUX_TX_OBJS)\
 	$(COPY_OBJS) $(BENCH_OBJS) $(IDLE_OBJS) \
-	$(SERIAL_OBJS) $(LWIP_OBJS)))
+	$(LWIP_OBJS)))
 DEPS := $(OBJS:.o=.d)
 
 all: $(IMAGE_FILE)
