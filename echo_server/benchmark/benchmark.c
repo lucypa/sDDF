@@ -24,6 +24,12 @@
 
 #define INIT 3
 
+#define PD_ETH_ID       1
+#define PD_MUX_RX_ID    2
+#define PD_MUX_TX_ID    3
+#define PD_COPY_ID      4
+#define PD_LWIP_ID      5
+
 uintptr_t uart_base;
 uintptr_t cyclecounters_vaddr;
 
@@ -57,6 +63,11 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_LWIP_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -71,6 +82,49 @@ sel4cp_benchmark_stop(uint64_t *total, uint64_t* idle, uint64_t *kernel, uint64_
     *idle = buffer[BENCHMARK_IDLE_LOCALCPU_UTILISATION];
     *kernel = buffer[BENCHMARK_TOTAL_KERNEL_UTILISATION];
     *entries = buffer[BENCHMARK_TOTAL_NUMBER_KERNEL_ENTRIES];
+}
+
+static void
+sel4cp_benchmark_stop_tcb(uint64_t pd_id, uint64_t *total, uint64_t *number_schedules, uint64_t *kernel, uint64_t *entries)
+{
+    seL4_BenchmarkGetThreadUtilisation(BASE_TCB_CAP + pd_id);
+    uint64_t *buffer = (uint64_t *)&seL4_GetIPCBuffer()->msg[0];
+
+    *total = buffer[BENCHMARK_TCB_UTILISATION];
+    *number_schedules = buffer[BENCHMARK_TCB_NUMBER_SCHEDULES];
+    *kernel = buffer[BENCHMARK_TCB_KERNEL_UTILISATION];
+    *entries = buffer[BENCHMARK_TCB_NUMBER_KERNEL_ENTRIES];
+}
+
+static void
+print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_entries, uint64_t number_schedules, uint64_t total_util)
+{
+    print("Utilisation details for PD: ");
+    switch (pd_id) {
+        case PD_ETH_ID: print("ETH DRIVER"); break;
+        case PD_MUX_RX_ID: print("MUX RX"); break;
+        case PD_MUX_TX_ID: print("MUX TX"); break;
+        case PD_COPY_ID: print("COPIER"); break;
+        case PD_LWIP_ID: print("LWIP CLIENT"); break;
+    }
+    print(" (");
+    puthex64(pd_id);
+    print(")\n");
+    print("KernelUtilisation");
+    print(": ");
+    puthex64(kernel_util);
+    print("\n");
+    print("KernelEntries");
+    print(": ");
+    puthex64(kernel_entries);
+    print("\n");
+    print("NumberSchedules: ");
+    puthex64(number_schedules);
+    print("\n");
+    print("TotalUtilisation: ");
+    puthex64(total_util);
+    print("\n");
+    print("}\n");
 }
 #endif
 
@@ -130,7 +184,7 @@ static inline void seL4_BenchmarkTrackDumpSummary(benchmark_track_kernel_entry_t
 #endif
 
 
-void notified(sel4cp_channel ch) 
+void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case START:
@@ -166,20 +220,24 @@ void notified(sel4cp_channel ch)
             uint64_t kernel;
             uint64_t entries;
             uint64_t idle;
+            uint64_t number_schedules;
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
+            print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
 
-            print("KernelUtilisation");
-            print(": ");
-            puthex64(kernel);
-            print("\n");
-            print("KernelEntries");
-            print(": ");
-            puthex64(entries);
-            print("\n");
-            print("TotalUtilisation: ");
-            puthex64(total);
-            print("\n");
-            print("}\n");
+            sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_MUX_RX_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_MUX_RX_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_MUX_TX_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_MUX_TX_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_COPY_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_COPY_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_LWIP_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_LWIP_ID, kernel, entries, number_schedules, total);
             #endif
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
