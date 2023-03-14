@@ -19,6 +19,8 @@
 #include "shared_ringbuffer.h"
 #include "echo.h"
 #include "timer.h"
+#include "tracepoints.h"
+#include "logbuffer.h"
 
 #define IRQ    1
 #define RX_CH  2
@@ -204,8 +206,9 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
     /* Grab an available TX buffer, copy pbuf data over,
-    add to used tx ring, notify server */
+    add to used tx ring, notify */
     err_t ret = ERR_OK;
+    bool was_empty = ring_empty(state.tx_ring.used_ring);
 
     if (p->tot_len > BUF_SIZE) {
         print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
@@ -230,6 +233,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     }
 
     int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
+
     if (err) {
         print("LWIP|ERROR: ARM VSpace clean failed: ");
         puthex64(err);
@@ -245,14 +249,22 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
         return ERR_MEM;
     }
 
-    /* Notify the server for next time we recv() */
-    notify_tx = true;
+    /* Notify the server for next time we recv() */ 
+    if (was_empty) {
+        notify_tx = true;
+    }
+
+    new_log_buffer_entry_used(1, RX_CH, ring_size(state.rx_ring.avail_ring), 
+                                ring_size(state.rx_ring.used_ring), ring_size(state.tx_ring.avail_ring),
+                                ring_size(state.tx_ring.used_ring));
+
     return ret;
 }
 
-void process_rx_queue(void)
+void process_rx_queue(sel4cp_channel ch)
 {
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
+    uint32_t num = 0;
+    if (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -263,15 +275,6 @@ void process_rx_queue(void)
             print("LWIP|ERROR: sanity check failed\n");
         }
 
-        /* Invalidate the memory */
-        int err = seL4_ARM_VSpace_Invalidate_Data(3, buffer->buffer, buffer->buffer + ETHER_MTU);
-        if (err) {
-            print("LWIP|ERROR: ARM Vspace invalidate failed\n");
-            puthex64(err);
-            print("\n");
-        }
-        assert(!err);
-
         struct pbuf *p = create_interface_buffer(&state, (void *)buffer, len);
 
         if (state.netif.input(p, &state.netif) != ERR_OK) {
@@ -279,6 +282,7 @@ void process_rx_queue(void)
             print("LWIP|ERROR: netif.input() != ERR_OK");
             pbuf_free(p);
         }
+        num++;
     }
 }
 
@@ -355,6 +359,9 @@ void init_post(void)
     setup_udp_socket();
     setup_utilization_socket();
 
+    notifications[RX_CH] = "Copy";
+    notifications[TX_CH] = "Mux tx";
+
     print(sel4cp_name);
     print(": init complete -- waiting for notification\n");
 }
@@ -428,16 +435,16 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case RX_CH:
-            process_rx_queue();
+            process_rx_queue(ch);
             break;
         case INIT:
             init_post();
-            break;
+            return;
         case IRQ:
             /* Timer */
             irq(ch);
             sel4cp_irq_ack(ch);
-            break;
+            return;
         case TX_CH:
             /*
              * We stop processing the Rx ring if there are no
@@ -445,22 +452,24 @@ void notified(sel4cp_channel ch)
              * Resume here.
              */
             if (!ring_empty(state.rx_ring.used_ring))
-                process_rx_queue();
+                process_rx_queue(ch);
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
             assert(0);
             break;
     }
+
     if (notify_rx) {
         notify_rx = false;
         sel4cp_notify_delayed(RX_CH);
     }
+    
     if (notify_tx) {
         notify_tx = false;
         if (!have_signal) {
             sel4cp_notify_delayed(TX_CH);
-        } else {
+        } else if (signal != 10 + TX_CH) {
             sel4cp_notify(TX_CH);
         }
     }

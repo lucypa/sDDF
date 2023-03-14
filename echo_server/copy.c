@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "logbuffer.h"
 #include <string.h>
 
 uintptr_t rx_avail_mux;
@@ -14,6 +15,8 @@ uintptr_t uart_base;
 
 #define MUX_RX_CH 0
 #define CLIENT_CH 1
+#define TRACE 2
+#define TRACE_NTFN 3
 
 #define BUF_SIZE 2048
 #define NUM_BUFFERS 512
@@ -23,14 +26,14 @@ ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 int initialised = 0;
 
-void process_rx_complete(void)
+void process_rx_complete(sel4cp_channel ch)
 {
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
     uint64_t mux_avail_original_size = ring_size(rx_ring_mux.avail_ring);
     bool cli_used_was_empty = ring_empty(rx_ring_cli.used_ring);
-    uint64_t enqueued = 0;
+    uint32_t enqueued = 0;
     // We only want to copy buffers if all the dequeues and enqueues will be successful
-    while (!ring_empty(rx_ring_mux.used_ring) &&
+    if (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.avail_ring) &&
             !ring_full(rx_ring_mux.avail_ring) &&
             !ring_full(rx_ring_cli.used_ring)) {
@@ -100,6 +103,11 @@ void process_rx_complete(void)
         }
         sel4cp_notify_delayed(MUX_RX_CH);
     }
+
+    new_log_buffer_entry_used(enqueued, ch, ring_size(rx_ring_mux.avail_ring), 
+                                ring_size(rx_ring_mux.used_ring),
+                                ring_size(rx_ring_cli.avail_ring),
+                                ring_size(rx_ring_cli.used_ring));
 }
 
 void notified(sel4cp_channel ch)
@@ -116,7 +124,10 @@ void notified(sel4cp_channel ch)
 
     if (ch == CLIENT_CH || ch == MUX_RX_CH) {
         /* We have one job. */
-        process_rx_complete();
+        process_rx_complete(ch);
+    } else if (ch == TRACE) {
+        log_buffer_stop();
+        sel4cp_notify(TRACE_NTFN);
     } else {
         print("COPY|ERROR: unexpected notification from channel: ");
         puthex64(ch);
@@ -137,6 +148,9 @@ void init(void)
         int err = enqueue_avail(&rx_ring_mux, addr, BUF_SIZE, NULL);
         assert(!err);
     }
+
+    notifications[MUX_RX_CH] = "Mux Rx";
+    notifications[CLIENT_CH] = "Lwip";
 
     return;
 }

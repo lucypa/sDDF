@@ -1,6 +1,8 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 #include "netif/ethernet.h"
+#include "tracepoints.h"
+#include "logbuffer.h"
 
 uintptr_t rx_avail_drv;
 uintptr_t rx_used_drv;
@@ -15,8 +17,11 @@ uintptr_t uart_base;
 
 #define COPY_CH 0
 #define DRIVER_CH 1
+#define TRACE 2
+#define TRACE_NTFN 3
 
 #define ETHER_MTU 1500
+#define BUF_SIZE 2048
 
 typedef struct state {
     /* Pointers to shared buffers */
@@ -30,6 +35,7 @@ int initialised = 0;
 uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint64_t dropped = 0;
 bool rx_avail_was_empty = false;
+bool tracing = false;
 
 static void
 dump_mac(uint8_t *mac)
@@ -82,7 +88,7 @@ int get_client(uintptr_t dma_vaddr) {
 /*
  * Loop over driver and insert all used rx buffers to appropriate client queues.
  */
-void process_rx_complete(void)
+void process_rx_complete(sel4cp_channel ch)
 {
     int notify_clients[NUM_CLIENTS] = {0};
 
@@ -91,15 +97,17 @@ void process_rx_complete(void)
         process_rx_free() as we dropped some packets */
     dropped = 0;
     rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
+    uint32_t num = 0;
 
-    while (!ring_empty(state.rx_ring_drv.used_ring)) {
+    if (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
         unsigned int len = 0;
         void *cookie = NULL;
 
         int err = dequeue_used(&state.rx_ring_drv, &addr, &len, &cookie);
         assert(!err);
-        err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + ETHER_MTU);
+        err = seL4_ARM_VSpace_Invalidate_Data(3, addr, addr + BUF_SIZE);
+
         if (err) {
             print("MUX RX|ERROR: ARM Vspace invalidate failed\n");
             puthex64(err);
@@ -124,7 +132,7 @@ void process_rx_complete(void)
             // no match, not for us, return the buffer to the driver.
             if (addr == 0) {
                 print("MUX RX|ERROR: Attempting to add NULL buffer to driver RX ring\n");
-                break;
+                //break;
             }
             err = enqueue_avail(&state.rx_ring_drv, addr, len, cookie);
             if (err) {
@@ -132,6 +140,8 @@ void process_rx_complete(void)
             }
             dropped++;
         }
+
+        num++;
     }
 
     /* Loop over bitmap and see who we need to notify. */
@@ -140,19 +150,24 @@ void process_rx_complete(void)
             sel4cp_notify(client);
         }
     }
+
+    new_log_buffer_entry_used(num, ch, ring_size(state.rx_ring_drv.avail_ring),
+                                ring_size(state.rx_ring_drv.used_ring),
+                                ring_size(state.rx_ring_clients[0].avail_ring),
+                                ring_size(state.rx_ring_clients[0].used_ring));
 }
 
 // Loop over all client rings and return unused rx buffers to the driver
-bool process_rx_free(void)
+bool process_rx_free(sel4cp_channel ch)
 {
     /* If we have enqueued to the driver's available ring and the available
      * ring was empty, we want to notify the driver. We also only want to
      * notify it only once.
      */
     uint64_t original_size = ring_size(state.rx_ring_drv.avail_ring);
-    uint64_t enqueued = 0;
+    uint32_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
+        if (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *buffer;
@@ -178,6 +193,11 @@ bool process_rx_free(void)
             (dropped != 0 && rx_avail_was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
+
+    new_log_buffer_entry_free(enqueued, ch, ring_size(state.rx_ring_drv.avail_ring),
+                                ring_size(state.rx_ring_drv.used_ring),
+                                ring_size(state.rx_ring_clients[0].avail_ring),
+                                ring_size(state.rx_ring_clients[0].used_ring));
 
     return enqueued;
 }
@@ -206,15 +226,20 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 void notified(sel4cp_channel ch)
 {
     if (!initialised) {
-        process_rx_free();
+        process_rx_complete(ch);
         sel4cp_notify(DRIVER_CH);
         initialised = 1;
         return;
     }
 
-    if (ch == COPY_CH || ch == DRIVER_CH) {
-        process_rx_complete();
-        process_rx_free();
+    if (ch == COPY_CH) {
+        process_rx_free(ch);
+    } else if (ch == DRIVER_CH) {
+        process_rx_complete(ch);
+    } else if (ch == TRACE) {
+        log_buffer_stop();
+        // notify the next inline
+        sel4cp_notify(TRACE_NTFN);
     } else {
         print("MUX RX|ERROR: unexpected notification from channel: ");
         puthex64(ch);
@@ -248,6 +273,10 @@ void init(void)
 
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_avail_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
+
+    // Initialise the notifications structure.
+    notifications[COPY_CH] = "Copy";
+    notifications[DRIVER_CH] = "Driver";
 
     return;
 }

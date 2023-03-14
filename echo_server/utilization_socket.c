@@ -23,6 +23,8 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
+#define ETH 6
+#define RX_MUX 7
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.
@@ -187,6 +189,9 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         tcp_shutdown(pcb, 0, 1);
 
         sel4cp_notify(STOP_PMU);
+        log_buffer_stop();
+        sel4cp_notify(RX_MUX);
+        
     } else if (msg_match(data_packet_str, QUIT)) {
         /* Do nothing for now */
     } else {

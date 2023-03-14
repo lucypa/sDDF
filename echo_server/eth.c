@@ -10,11 +10,14 @@
 #include "eth.h"
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "tracepoints.h"
+#include "logbuffer_eth.h"
 
 #define IRQ_CH 0
 #define TX_CH  1
 #define RX_CH  2
 #define INIT   3
+#define TRACE  4
 
 #define MDC_FREQ    20000000UL
 
@@ -34,6 +37,7 @@ uintptr_t tx_used;
 uintptr_t uart_base;
 
 bool initialised = false;
+bool tracing = false;
 /* Make the minimum frame buffer 2k. This is a bit of a waste of memory, but ensures alignment */
 #define PACKET_BUFFER_SIZE  2048
 #define MAX_PACKET_SIZE     1536
@@ -72,11 +76,14 @@ typedef struct {
     volatile struct descriptor *descr; /* pointer to NIC's ringbuffer */
     uintptr_t phys;     /* physical address of buffer region. */
     void **cookies;     /* For client to use */
+    unsigned int tx_lengths[TX_COUNT];
 } ring_ctx_t;
 
-ring_ctx_t rx; /* Rx NIC ring */
-ring_ctx_t tx; /* Tx NIC ring */
-unsigned int tx_lengths[TX_COUNT];
+ring_ctx_t *rx = (void *)(uintptr_t)0x5600000;
+ring_ctx_t *tx = (void *)(uintptr_t)0x5400000;
+//ring_ctx_t rx; /* Rx NIC ring */
+//ring_ctx_t tx; /* Tx NIC ring */
+//unsigned int tx_lengths[TX_COUNT];
 
 /* Pointers to shared_ringbuffers */
 ring_handle_t rx_ring;
@@ -187,10 +194,11 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     return get_phys_addr(addr, 0);
 }
 
-static void fill_rx_bufs(void)
+static void fill_rx_bufs(sel4cp_channel ch)
 {
-    ring_ctx_t *ring = &rx;
+    ring_ctx_t *ring = rx;
     __sync_synchronize();
+    uint32_t enqueued = 0;
     while (ring->remain > 0) {
         /* request a buffer */
         void *cookie = NULL;
@@ -210,6 +218,7 @@ static void fill_rx_bufs(void)
         ring->tail = new_tail;
         /* There is a race condition if add/remove is not synchronized. */
         ring->remain--;
+        enqueued++;
     }
     __sync_synchronize();
 
@@ -221,12 +230,16 @@ static void fill_rx_bufs(void)
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
     }
+
+    new_log_buffer_entry_rx_free(enqueued, ch, ring->remain, 0,
+                                    ring_size(rx_ring.avail_ring),
+                                    ring_size(rx_ring.used_ring));
 }
 
 static void
 handle_rx(volatile struct enet_regs *eth)
 {
-    ring_ctx_t *ring = &rx;
+    ring_ctx_t *ring = rx;
     unsigned int head = ring->head;
     int num = 0;
     int was_empty = ring_empty(rx_ring.used_ring);
@@ -245,7 +258,7 @@ handle_rx(volatile struct enet_regs *eth)
      *   we run out of filled buffers in the NIC ring
      *   we run out of slots in the upstream Rx ring.
      */
-    while (head != ring->tail && !ring_full(rx_ring.used_ring)) {
+    if (head != ring->tail && !ring_full(rx_ring.used_ring)) {
         volatile struct descriptor *d = &(ring->descr[head]);
 
         /*
@@ -253,8 +266,8 @@ handle_rx(volatile struct enet_regs *eth)
          * Still need to signal upstream if
          * we've dequeued anything.
          */
-        if (d->stat & RXD_EMPTY) {
-            break;
+        if (d->stat & !RXD_EMPTY) {
+            goto handle_rx_done;
         }
 
         void *cookie = ring->cookies[head];
@@ -269,9 +282,6 @@ handle_rx(volatile struct enet_regs *eth)
 
         buff_desc_t *desc = (buff_desc_t *)cookie;
         int err = enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
-        if (err) {
-            print("ETH|ERROR: Failed to enqueue to RX used ring\n");
-        }
         assert(!err);
         num++;
     }
@@ -281,26 +291,26 @@ handle_rx(volatile struct enet_regs *eth)
      * Driver runs at highest priority, so buffers will be refilled
      * by caller before the notify causes a context switch.
      */
+handle_rx_done:
     if (num && was_empty) {
         sel4cp_notify(RX_CH);
     }
+
+    new_log_buffer_entry_rx_used(num, IRQ_CH, ring->remain, 0,
+                                    ring_size(rx_ring.avail_ring),
+                                    ring_size(rx_ring.used_ring));
 }
 
 static void
 raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
                   unsigned int *len, void *cookie)
 {
-    ring_ctx_t *ring = &tx;
+    ring_ctx_t *ring = tx;
 
     /* Ensure we have room */
     if (ring->remain < num) {
-        /* not enough room, try to complete some and check again */
-        complete_tx(eth);
-        unsigned int rem = ring->remain;
-        if (rem < num) {
-            print("TX queue lacks space");
-            return;
-        }
+        /* not enough room */
+        return;
     }
 
     __sync_synchronize();
@@ -324,7 +334,7 @@ raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
     }
 
     ring->cookies[tail] = cookie;
-    tx_lengths[tail] = num;
+    ring->tx_lengths[tail] = num;
     ring->tail = tail_new;
     /* There is a race condition here if add/remove is not synchronized. */
     ring->remain -= num;
@@ -338,17 +348,24 @@ raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
 }
 
 static void
-handle_tx(volatile struct enet_regs *eth)
+handle_tx(volatile struct enet_regs *eth, sel4cp_channel ch)
 {
+    print("UH OH\n");
     uintptr_t buffer = 0;
     unsigned int len = 0;
     void *cookie = NULL;
+    uint64_t num = 0;
 
     // We need to put in an empty condition here.
-    while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+    if ((tx->remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
         uintptr_t phys = get_phys_addr(buffer, 1);
         raw_tx(eth, 1, &phys, &len, cookie);
+        num++;
     }
+
+    new_log_buffer_entry_tx_used(num, ch, tx->remain, 0,
+                                    ring_size(tx_ring.avail_ring),
+                                    ring_size(tx_ring.used_ring));
 }
 
 static void
@@ -356,16 +373,16 @@ complete_tx(volatile struct enet_regs *eth)
 {
     unsigned int cnt_org;
     void *cookie;
-    ring_ctx_t *ring = &tx;
+    ring_ctx_t *ring = tx;
     unsigned int head = ring->head;
     unsigned int cnt = 0;
     int enqueued = 0;
 
     int was_empty = ring_empty(tx_ring.avail_ring);
 
-    while (head != ring->tail && !ring_full(tx_ring.avail_ring)) {
+    if (head != ring->tail && !ring_full(tx_ring.avail_ring)) {
         if (0 == cnt) {
-            cnt = tx_lengths[head];
+            cnt = ring->tx_lengths[head];
             if ((0 == cnt) || (cnt > TX_COUNT)) {
                 /* We are not supposed to read 0 here. */
                 print("complete_tx with cnt=0 or max");
@@ -384,7 +401,7 @@ complete_tx(volatile struct enet_regs *eth)
                 eth->tdar = TDAR_TDAR;
             }
             if (d->stat & TXD_READY) {
-                break;
+                goto done;
             }
         }
 
@@ -406,13 +423,18 @@ complete_tx(volatile struct enet_regs *eth)
         }
     }
 
-    if (!ring_empty(tx_ring.used_ring)) {
-        handle_tx(eth);
-    }
+done:
+    /*if (!ring_empty(tx_ring.used_ring)) {
+        handle_tx(eth, IRQ_CH);
+    }*/
 
     if (was_empty && enqueued) {
         sel4cp_notify(TX_CH);
     }
+
+    new_log_buffer_entry_tx_free(enqueued, IRQ_CH, tx->remain, 0,
+                                    ring_size(tx_ring.avail_ring),
+                                    ring_size(tx_ring.used_ring));
 
     /* The only reason to arrive here is when head equals tails. If cnt is not
      * zero, then there is some kind of overflow or data corruption. The number
@@ -430,13 +452,13 @@ handle_eth(volatile struct enet_regs *eth)
     /* write to clear events */
     eth->eir = e;
 
-    while (e & irq_mask) {
+    if (e & irq_mask) {
         if (e & NETIRQ_TXF) {
             complete_tx(eth);
         }
         if (e & NETIRQ_RXF) {
             handle_rx(eth);
-            fill_rx_bufs();
+            fill_rx_bufs(IRQ_CH);
         }
         if (e & NETIRQ_EBERR) {
             print("Error: System bus/uDMA");
@@ -456,21 +478,21 @@ eth_setup(void)
     sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
-    rx.cnt = RX_COUNT;
-    rx.remain = rx.cnt - 2;
-    rx.tail = 0;
-    rx.head = 0;
-    rx.phys = shared_dma_paddr_rx;
-    rx.cookies = (void **)rx_cookies;
-    rx.descr = (volatile struct descriptor *)hw_ring_buffer_vaddr;
+    rx->cnt = RX_COUNT;
+    rx->remain = rx->cnt - 2;
+    rx->tail = 0;
+    rx->head = 0;
+    rx->phys = shared_dma_paddr_rx;
+    rx->cookies = (void **)rx_cookies;
+    rx->descr = (volatile struct descriptor *)hw_ring_buffer_vaddr;
 
-    tx.cnt = TX_COUNT;
-    tx.remain = tx.cnt - 2;
-    tx.tail = 0;
-    tx.head = 0;
-    tx.phys = shared_dma_paddr_tx;
-    tx.cookies = (void **)tx_cookies;
-    tx.descr = (volatile struct descriptor *)(hw_ring_buffer_vaddr + (sizeof(struct descriptor) * RX_COUNT));
+    tx->cnt = TX_COUNT;
+    tx->remain = tx->cnt - 2;
+    tx->tail = 0;
+    tx->head = 0;
+    tx->phys = shared_dma_paddr_tx;
+    tx->cookies = (void **)tx_cookies;
+    tx->descr = (volatile struct descriptor *)(hw_ring_buffer_vaddr + (sizeof(struct descriptor) * RX_COUNT));
 
     /* Perform reset */
     eth->ecr = ECR_RESET;
@@ -507,8 +529,8 @@ eth_setup(void)
 
     eth->opd = PAUSE_OPCODE_FIELD;
 
-    /* coalesce transmit IRQs to batches of 128 */
-    eth->txic0 = ICEN | ICFT(128) | 0xFF;
+    /* coalesce transmit IRQs to batches of 128 or 512 * 64 cycles. */
+    //eth->txic0 = ICEN | ICFT(128) | 0x200;
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
     eth->tfwr = 0;
@@ -547,7 +569,12 @@ void init_post()
     ring_init(&rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 0);
     ring_init(&tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 0);
 
-    fill_rx_bufs();
+    fill_rx_bufs(IRQ_CH);
+
+    notifications[IRQ_CH] = "IRQ";
+    notifications[TX_CH] = "Mux tx";
+    notifications[RX_CH] = "Mux rx";
+
     print(sel4cp_name);
     print(": init complete -- waiting for interrupt\n");
     sel4cp_notify(INIT);
@@ -579,7 +606,7 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
             sel4cp_mr_set(1, eth->paur);
             return sel4cp_msginfo_new(0, 2);
         case TX_CH:
-            handle_tx(eth);
+            handle_tx(eth, ch);
             break;
         default:
             sel4cp_dbg_puts("Received ppc on unexpected channel ");
@@ -602,14 +629,17 @@ void notified(sel4cp_channel ch)
             break;
         case RX_CH:
             if (initialised) {
-                fill_rx_bufs();
+                fill_rx_bufs(RX_CH);
             } else {
                 init_post();
                 initialised = true;
             }
             break;
         case TX_CH:
-            handle_tx(eth);
+            handle_tx(eth, ch);
+            break;
+        case TRACE:
+            log_buffer_stop();
             break;
         default:
             sel4cp_dbg_puts("eth driver: received notification on unexpected channel: ");

@@ -30,11 +30,31 @@
     <memory_region name="rx_cookies" size="0x200_000" page_size="0x200_000"/>
     <memory_region name="tx_cookies" size="0x200_000" page_size="0x200_000"/>
 
+    <memory_region name="tx_desc" size="0x200_000" page_size="0x200_000" />
+    <memory_region name="rx_desc" size="0x200_000" page_size="0x200_000" />
+
     <memory_region name="data_packet" size="0x1000"/>
 
     <memory_region name="cyclecounters" size="0x1000"/>
 
     <!--- <memory_region name="log_buffer" size="0x200_000" page_size="0x200_000"/>-->
+    <memory_region name="buffer_used_rx_mux" size="0x1000"/>
+    <memory_region name="buffer_free_rx_mux" size="0x1000"/>
+
+    <memory_region name="buffer_used_tx_mux" size="0x1000"/>
+    <memory_region name="buffer_free_tx_mux" size="0x1000"/>
+
+    <memory_region name="buffer_used_copy" size="0x1000"/>
+    <memory_region name="buffer_free_copy" size="0x1000"/>
+
+    <memory_region name="buffer_used_lwip" size="0x1000"/>
+    <memory_region name="buffer_free_lwip" size="0x1000"/>
+
+    <memory_region name="buffer_rx_used_eth" size="0x1000"/>
+    <memory_region name="buffer_rx_free_eth" size="0x1000"/>
+
+    <memory_region name="buffer_tx_used_eth" size="0x1000"/>
+    <memory_region name="buffer_tx_free_eth" size="0x1000"/>
 
     <protection_domain name="benchIdle" priority="1" >
         <program_image path="idle.elf" />
@@ -47,7 +67,7 @@
         <!--<map mr="log_buffer" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="log_buffer" /> -->
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
-        <protection_domain name="eth" priority="101" pp="true" pd_id="1">
+        <protection_domain name="eth" priority="101" pp="true" pd_id="1" budget="100" period="400">
             <program_image path="eth.elf" />
             <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
 
@@ -69,9 +89,41 @@
 
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
+            <map mr="tx_desc" vaddr="0x5_400_000" perms="rw" cached="true" setvar_vaddr="tx" />
+            <map mr="rx_desc" vaddr="0x5_600_000" perms="rw" cached="true" setvar_vaddr="rx" />
+
             <!-- we need physical addresses of hw rings and dma region -->
             <setvar symbol="hw_ring_buffer_paddr" region_paddr="hw_ring_buffer" />
             <setvar symbol="shared_dma_paddr_rx" region_paddr="shared_dma_rx" />
+            <setvar symbol="shared_dma_paddr_tx" region_paddr="shared_dma_tx" />
+
+            <map mr="buffer_rx_used_eth" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="buffer_rx_used" />
+            <map mr="buffer_rx_free_eth" vaddr="0x5_201_000" perms="rw" cached="true" setvar_vaddr="buffer_rx_free" />
+            <map mr="buffer_tx_used_eth" vaddr="0x5_202_000" perms="rw" cached="true" setvar_vaddr="buffer_tx_used" />
+            <map mr="buffer_tx_free_eth" vaddr="0x5_203_000" perms="rw" cached="true" setvar_vaddr="buffer_tx_free" />
+        </protection_domain>
+
+        <protection_domain name="eth2" priority="102" pp="true" pd_id="7">
+            <program_image path="eth2.elf" />
+            <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
+
+            <map mr="hw_ring_buffer" vaddr="0x3_000_000" perms="rw" cached="false" setvar_vaddr="hw_ring_buffer_vaddr" />
+
+            <map mr="tx_cookies" vaddr="0x3_600_000" perms="rw" cached="true" setvar_vaddr="tx_cookies" />
+
+            <!-- shared memory for ring buffer mechanism -->
+            <map mr="tx_avail_drv" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail" />
+            <map mr="tx_used_drv" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
+
+            <map mr="shared_dma_tx" vaddr="0x2_600_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
+
+            <map mr="tx_desc" vaddr="0x5_400_000" perms="rw" cached="true" setvar_vaddr="tx" />
+
+            <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+            <map mr="buffer_tx_used_eth" vaddr="0x5_202_000" perms="rw" cached="true" setvar_vaddr="buffer_tx_used" />
+            <!-- we need physical addresses of hw rings and dma region -->
+            <setvar symbol="hw_ring_buffer_paddr" region_paddr="hw_ring_buffer" />
             <setvar symbol="shared_dma_paddr_tx" region_paddr="shared_dma_tx" />
         </protection_domain>
 
@@ -87,6 +139,9 @@
 
             <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+            <map mr="buffer_used_rx_mux" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="buffer_used" />
+            <map mr="buffer_free_rx_mux" vaddr="0x5_201_000" perms="rw" cached="true" setvar_vaddr="buffer_free" />
         </protection_domain>
 
         <protection_domain name="copy" priority="98" budget="20000" pd_id="4">
@@ -101,6 +156,9 @@
             <map mr="rx_used_cli" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used_cli" />
 
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+            <map mr="buffer_used_copy" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="buffer_used" />
+            <map mr="buffer_free_copy" vaddr="0x5_201_000" perms="rw" cached="true" setvar_vaddr="buffer_free" /> 
         </protection_domain>
 
         <protection_domain name="mux_tx" priority="100" budget="20000" pd_id="3">
@@ -115,6 +173,9 @@
 
             <map mr="shared_dma_tx" vaddr="0x2_600_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+            <map mr="buffer_used_tx_mux" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="buffer_used" />
+            <map mr="buffer_free_tx_mux" vaddr="0x5_201_000" perms="rw" cached="true" setvar_vaddr="buffer_free" />
         </protection_domain>
 
         <protection_domain name="lwip" priority="97" budget="20000" pd_id="5">
@@ -137,6 +198,9 @@
             <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
 
             <irq irq="87" id="1" /> <!-- timer interrupt -->
+             
+            <map mr="buffer_used_lwip" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="buffer_used" />
+            <map mr="buffer_free_lwip" vaddr="0x5_201_000" perms="rw" cached="true" setvar_vaddr="buffer_free" />
         </protection_domain>
     </protection_domain>
 
@@ -157,6 +221,11 @@
 
     <channel>
         <end pd="mux_tx" id="1" />
+        <end pd="eth2" id="1" />
+    </channel>
+
+    <channel>
+        <end pd="mux_tx" id="4" />
         <end pd="eth" id="1" />
     </channel>
 
@@ -184,4 +253,25 @@
         <end pd="eth" id="3" />
         <end pd="lwip" id="6" />
     </channel>
+
+    <!-- these are just for benchmarking printing. -->
+    <channel>
+        <end pd="mux_rx" id="2" />
+        <end pd="lwip" id="7" />
+    </channel>
+
+    <channel>
+        <end pd="mux_rx" id="3" />
+        <end pd="copy" id="2" />
+    </channel>
+
+    <channel>
+        <end pd="copy" id="3" />
+        <end pd="mux_tx" id="2" />
+    </channel>
+
+    <channel>
+        <end pd="mux_tx" id="3" />
+        <end pd="eth" id="4" />
+    </channel>   
 </system>

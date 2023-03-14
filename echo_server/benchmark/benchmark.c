@@ -29,6 +29,7 @@
 #define PD_MUX_TX_ID    3
 #define PD_COPY_ID      4
 #define PD_LWIP_ID      5
+#define PD_ETH2_ID      7
 
 uintptr_t uart_base;
 uintptr_t cyclecounters_vaddr;
@@ -68,6 +69,7 @@ sel4cp_benchmark_start(void)
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_LWIP_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH2_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -106,6 +108,7 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
         case PD_MUX_TX_ID: print("MUX TX"); break;
         case PD_COPY_ID: print("COPIER"); break;
         case PD_LWIP_ID: print("LWIP CLIENT"); break;
+        case PD_ETH2_ID: print("TX ETH"); break;
     }
     print(" (");
     puthex64(pd_id);
@@ -226,6 +229,9 @@ void notified(sel4cp_channel ch)
 
             sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_ETH2_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_ETH2_ID, kernel, entries, number_schedules, total);
 
             sel4cp_benchmark_stop_tcb(PD_MUX_RX_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_MUX_RX_ID, kernel, entries, number_schedules, total);
