@@ -263,15 +263,6 @@ void process_rx_queue(void)
             print("LWIP|ERROR: sanity check failed\n");
         }
 
-        /* Invalidate the memory */
-        int err = seL4_ARM_VSpace_Invalidate_Data(3, buffer->buffer, buffer->buffer + ETHER_MTU);
-        if (err) {
-            print("LWIP|ERROR: ARM Vspace invalidate failed\n");
-            puthex64(err);
-            print("\n");
-        }
-        assert(!err);
-
         struct pbuf *p = create_interface_buffer(&state, (void *)buffer, len);
 
         if (state.netif.input(p, &state.netif) != ERR_OK) {
@@ -460,7 +451,7 @@ void notified(sel4cp_channel ch)
         notify_tx = false;
         if (!have_signal) {
             sel4cp_notify_delayed(TX_CH);
-        } else {
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH){
             sel4cp_notify(TX_CH);
         }
     }
