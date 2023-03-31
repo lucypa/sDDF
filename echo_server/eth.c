@@ -25,9 +25,9 @@ uintptr_t shared_dma_vaddr;
 uintptr_t shared_dma_paddr;
 uintptr_t rx_cookies;
 uintptr_t tx_cookies;
-uintptr_t rx_avail;
+uintptr_t rx_free;
 uintptr_t rx_used;
-uintptr_t tx_avail;
+uintptr_t tx_free;
 uintptr_t tx_used;
 uintptr_t uart_base;
 
@@ -147,9 +147,9 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     uintptr_t addr;
     unsigned int len;
 
-    /* Try to grab a buffer from the available ring */
-    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
-        print("RX Available ring is empty\n");
+    /* Try to grab a buffer from the free ring */
+    if (driver_dequeue(rx_ring.free_ring, &addr, &len, cookie)) {
+        print("RX Free ring is empty\n");
         return 0;
     }
 
@@ -200,7 +200,7 @@ handle_rx(volatile struct enet_regs *eth)
     int was_empty = ring_empty(rx_ring.used_ring);
 
     // we don't want to dequeue packets if we have nothing to replace it with
-    while (head != ring->tail && (ring_size(rx_ring.avail_ring) > num)) {
+    while (head != ring->tail && (ring_size(rx_ring.free_ring) > num)) {
         volatile struct descriptor *d = &(ring->descr[head]);
 
         /* If the slot is still marked as empty we are done. */
@@ -261,7 +261,7 @@ complete_tx(volatile struct enet_regs *eth)
                 eth->tdar = TDAR_TDAR;
             }
             if (d->stat & TXD_READY) {
-                return;
+                break;
             }
         }
 
@@ -277,16 +277,8 @@ complete_tx(volatile struct enet_regs *eth)
             /* give the buffer back */
             buff_desc_t *desc = (buff_desc_t *)cookie;
 
-            enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            enqueue_free(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
         }
-    }
-
-    /* The only reason to arrive here is when head equals tails. If cnt is not
-     * zero, then there is some kind of overflow or data corruption. The number
-     * of tx descriptors holding data can't exceed the space in the ring.
-     */
-    if (0 != cnt) {
-        print("head reached tail, but cnt!= 0");
     }
 }
 
@@ -476,8 +468,8 @@ eth_setup(void)
 void init_post()
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
 
     fill_rx_bufs();
     sel4cp_dbg_puts(sel4cp_name);

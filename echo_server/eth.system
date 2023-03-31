@@ -8,9 +8,9 @@
     <memory_region name="shared_dma" size="0x200_000" page_size="0x200_000" />
 
     <!-- shared memory for ring buffer mechanism -->
-    <memory_region name="rx_avail" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="rx_free" size="0x200_000" page_size="0x200_000"/>
     <memory_region name="rx_used" size="0x200_000" page_size="0x200_000"/>
-    <memory_region name="tx_avail" size="0x200_000" page_size="0x200_000"/>
+    <memory_region name="tx_free" size="0x200_000" page_size="0x200_000"/>
     <memory_region name="tx_used" size="0x200_000" page_size="0x200_000"/>
 
     <memory_region name="rx_cookies" size="0x200_000" page_size="0x200_000"/>
@@ -30,9 +30,9 @@
         <map mr="tx_cookies" vaddr="0x3_600_000" perms="rw" cached="true" setvar_vaddr="tx_cookies" />
 
         <!-- shared memory for ring buffer mechanism -->
-        <map mr="rx_avail" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_avail" />
+        <map mr="rx_free" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
         <map mr="rx_used" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
-        <map mr="tx_avail" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail" />
+        <map mr="tx_free" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
         <map mr="tx_used" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
 
         <map mr="shared_dma" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />
@@ -53,9 +53,9 @@
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
         <!-- shared memory for ring buffer mechanism -->
-        <map mr="rx_avail" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_avail" />
+        <map mr="rx_free" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
         <map mr="rx_used" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
-        <map mr="tx_avail" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_avail" />
+        <map mr="tx_free" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
         <map mr="tx_used" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
 
         <map mr="shared_dma" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr" />

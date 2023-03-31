@@ -20,7 +20,7 @@ target applications CMake configuration.
 This libary is intended to be used by both a producer and a consumer. For
 example, an ethernet driver produces data for a network stack to consume.
 2 separate shared memory regions are required for each ring handle; one
-to store available buffers and one to store used buffers. Each ring buffer
+to store free buffers and one to store used buffers. Each ring buffer
 contains a separate read index and write index. The reader only ever
 increments the read index, and the writer the write index. As read and
 writes of a small integer are atomic, we can keep memory consistent
@@ -36,12 +36,12 @@ Use case
 This library is intended to be used with a separate shared memory region,
 usually allocated for DMA for a driver. The ring buffers can then contain
 pointers into this shared memory, indicating which buffers are in use or
-available to be used by either component.
+free to be used by either component.
 Typically, 2 shared ring buffers are required, with separate structures
 required on the recieve path and transmit path. Thus there are 4 regions
-of shared memory required: 1 storing pointers to available RX buffers,
+of shared memory required: 1 storing pointers to free RX buffers,
 1 storing pointers to used RX buffers, 1 storing pointers to TX 
-buffers, and another storing pointers to available TX buffers.
+buffers, and another storing pointers to free TX buffers.
 
 On initialisation, both the producer and consumer should allocate their
 own ring handles (`struct ring_handle`). These data structures simply
@@ -56,11 +56,11 @@ After initialisation, a typical use case would look like:
 The driver wants to add some buffer that will be read by another component
 (for example, a network stack processing incoming packets).
 
-    1. The driver dequeues a pointer to an available buffer from the
-    available ring.
+    1. The driver dequeues a pointer to a free buffer from the
+    free ring.
     2. Once data is inserted into the buffer (eg. via DMA), the driver
     then enqueues the pointer to it into the used ring.
     3. The driver can then notify the reciever.
     4. Similarly, the reciever dequeues the pointer from the used ring,
     processes the data, and once finished, can enqueue it back into
-    the available ring to be used once more by the driver.
+    the free ring to be used once more by the driver.

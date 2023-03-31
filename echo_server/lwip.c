@@ -32,9 +32,9 @@
 #define BUF_SIZE 2048
 
 /* Memory regions. These all have to be here to keep compiler happy */
-uintptr_t rx_avail;
+uintptr_t rx_free;
 uintptr_t rx_used;
-uintptr_t tx_avail;
+uintptr_t tx_free;
 uintptr_t tx_used;
 uintptr_t copy_rx;
 uintptr_t shared_dma_vaddr;
@@ -89,9 +89,9 @@ LWIP_MEMPOOL_DECLARE(
 
 static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
 {
-    /* As the rx_available ring is the size of the number of buffers we have,
+    /* As the rx free ring is the size of the number of buffers we have,
     the ring should never be full. */
-    enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    enqueue_free(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
 }
 
 /**
@@ -158,7 +158,7 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
     unsigned int len;
     ethernet_buffer_t *buffer;
 
-    dequeue_avail(&state->tx_ring, &addr, &len, (void **)&buffer);
+    dequeue_free(&state->tx_ring, &addr, &len, (void **)&buffer);
     if (!buffer) {
         print("lwip: dequeued a null ethernet buffer\n");
     }
@@ -205,7 +205,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     int error = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
     if (error) {
         print("TX used ring full\n");
-        enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        enqueue_free(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
         return ERR_MEM;
     }
 
@@ -323,8 +323,8 @@ void init(void)
     sel4cp_dbg_puts(": elf PD init function running\n");
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 1);
-    ring_init(&state.tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 1);
+    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
+    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 1);
 
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -336,7 +336,7 @@ void init(void)
             .index = i,
             .in_use = false,
         };
-        enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        enqueue_free(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -349,7 +349,7 @@ void init(void)
             .in_use = false,
         };
 
-        enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        enqueue_free(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
     }
 
     lwip_init();
