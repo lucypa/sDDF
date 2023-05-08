@@ -33,8 +33,8 @@ typedef struct ring_buffer {
 
 /* A ring handle for enqueing/dequeuing into  */
 typedef struct ring_handle {
+    ring_buffer_t *free_ring;
     ring_buffer_t *used_ring;
-    ring_buffer_t *avail_ring;
     /* Function to be used to signal that work is queued in the used_ring */
     notify_fn notify;
 } ring_handle_t;
@@ -43,13 +43,13 @@ typedef struct ring_handle {
  * Initialise the shared ring buffer.
  *
  * @param ring ring handle to use.
- * @param avail pointer to available ring in shared memory.
+ * @param free pointer to free ring in shared memory.
  * @param used pointer to 'used' ring in shared memory.
  * @param notify function pointer used to notify the other user.
  * @param buffer_init 1 indicates the read and write indices in shared memory need to be initialised.
  *                    0 inidicates they do not. Only one side of the shared memory regions needs to do this.
  */
-void ring_init(ring_handle_t *ring, ring_buffer_t *avail, ring_buffer_t *used, notify_fn notify, int buffer_init);
+void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, notify_fn notify, int buffer_init);
 
 /**
  * Check if the ring buffer is empty.
@@ -149,8 +149,8 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
 }
 
 /**
- * Enqueue an element into an available ring buffer.
- * This indicates the buffer address parameter is currently available for use.
+ * Enqueue an element into an free ring buffer.
+ * This indicates the buffer address parameter is currently free for use.
  *
  * @param ring Ring handle to enqueue into.
  * @param buffer address into shared memory where data is stored.
@@ -159,10 +159,10 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
  *
  * @return -1 when ring is full, 0 on success.
  */
-static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
+static inline int enqueue_free(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
     assert(addr);
-    return enqueue(ring->avail_ring, addr, len, cookie);
+    return enqueue(ring->free_ring, addr, len, cookie);
 }
 
 /**
@@ -183,7 +183,7 @@ static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int
 }
 
 /**
- * Dequeue an element from an available ring buffer.
+ * Dequeue an element from an free ring buffer.
  *
  * @param ring Ring handle to dequeue from.
  * @param buffer pointer to the address of where to store buffer address.
@@ -192,9 +192,9 @@ static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int
  *
  * @return -1 when ring is empty, 0 on success.
  */
-static inline int dequeue_avail(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
+static inline int dequeue_free(ring_handle_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
-    return dequeue(ring->avail_ring, addr, len, cookie);
+    return dequeue(ring->free_ring, addr, len, cookie);
 }
 
 /**

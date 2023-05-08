@@ -1,10 +1,10 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 
-uintptr_t tx_avail_drv;
+uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
 
-uintptr_t tx_avail_cli;
+uintptr_t tx_free_cli;
 uintptr_t tx_used_cli;
 
 uintptr_t shared_dma_vaddr;
@@ -50,23 +50,23 @@ void process_tx_ready(void)
 }
 
 /*
- * Take as many TX available buffers from the driver and give them to
+ * Take as many TX free buffers from the driver and give them to
  * the client. This will notify the client if we have moved buffers
- * around and the client's TX available ring was already empty.
+ * around and the client's TX free ring was already empty.
  */
 // TODO: Use the address range to determine which client
 // this buffer originated from to return it to the correct one. 
 void process_tx_complete(void)
 {
-    bool was_empty = ring_empty(state.tx_ring_clients[0].avail_ring);
+    bool was_empty = ring_empty(state.tx_ring_clients[0].free_ring);
     bool enqueued = false;
-    while (!ring_empty(state.tx_ring_drv.avail_ring) && !ring_full(state.tx_ring_clients[0].avail_ring)) {
+    while (!ring_empty(state.tx_ring_drv.free_ring) && !ring_full(state.tx_ring_clients[0].free_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
-        int err = dequeue_avail(&state.tx_ring_drv, &addr, &len, &cookie);
+        int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
         assert(!err);
-        err = enqueue_avail(&state.tx_ring_clients[0], addr, len, cookie);
+        err = enqueue_free(&state.tx_ring_clients[0], addr, len, cookie);
         assert(!err);
         enqueued = true;
     }
@@ -93,8 +93,8 @@ void init(void)
 {
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_avail_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_avail_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
+    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
 
     print("MUX: initialised\n");
 

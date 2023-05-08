@@ -2,10 +2,10 @@
 #include "util.h"
 #include "netif/ethernet.h"
 
-uintptr_t rx_avail_drv;
+uintptr_t rx_free_drv;
 uintptr_t rx_used_drv;
 
-uintptr_t rx_avail_cli;
+uintptr_t rx_free_cli;
 uintptr_t rx_used_cli;
 
 uintptr_t shared_dma_vaddr;
@@ -29,7 +29,7 @@ state_t state;
 int initialised = 0;
 uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint64_t dropped = 0;
-bool rx_avail_was_empty = false;
+bool rx_free_was_empty = false;
 
 static void
 dump_mac(uint8_t *mac)
@@ -90,7 +90,7 @@ void process_rx_complete(void)
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
-    rx_avail_was_empty = ring_empty(state.rx_ring_drv.avail_ring);
+    rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
 
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
@@ -126,9 +126,9 @@ void process_rx_complete(void)
                 print("MUX RX|ERROR: Attempting to add NULL buffer to driver RX ring\n");
                 break;
             }
-            err = enqueue_avail(&state.rx_ring_drv, addr, len, cookie);
+            err = enqueue_free(&state.rx_ring_drv, addr, len, cookie);
             if (err) {
-                print("MUX RX|ERROR: Failed to enqueue available to driver RX ring\n");
+                print("MUX RX|ERROR: Failed to enqueue free to driver RX ring\n");
             }
             dropped++;
         }
@@ -145,20 +145,20 @@ void process_rx_complete(void)
 // Loop over all client rings and return unused rx buffers to the driver
 bool process_rx_free(void)
 {
-    /* If we have enqueued to the driver's available ring and the available
+    /* If we have enqueued to the driver's free ring and the free
      * ring was empty, we want to notify the driver. We also only want to
      * notify it only once.
      */
-    uint64_t original_size = ring_size(state.rx_ring_drv.avail_ring);
+    uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
     uint64_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].avail_ring)) {
+        while (!ring_empty(state.rx_ring_clients[i].free_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *buffer;
-            int err = dequeue_avail(&state.rx_ring_clients[i], &addr, &len, &buffer);
+            int err = dequeue_free(&state.rx_ring_clients[i], &addr, &len, &buffer);
             assert(!err);
-            err = enqueue_avail(&state.rx_ring_drv, addr, len, buffer);
+            err = enqueue_free(&state.rx_ring_drv, addr, len, buffer);
             assert(!err);
             enqueued += 1;
         }
@@ -169,13 +169,13 @@ bool process_rx_free(void)
        and thus the number of packets we enqueued does not equal the ring_size now 
        (So the driver could have missed an empty to full ntfn)
        
-       We also could have enqueued packets into the available ring during 
+       We also could have enqueued packets into the free ring during 
        process_rx_complete(), so we could have also missed this empty condition.
        */
     if (((original_size == 0 || 
-            original_size + enqueued != ring_size(state.rx_ring_drv.avail_ring))
+            original_size + enqueued != ring_size(state.rx_ring_drv.free_ring))
             && enqueued != 0) ||
-            (dropped != 0 && rx_avail_was_empty)) {
+            (dropped != 0 && rx_free_was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
@@ -244,10 +244,10 @@ void init(void)
     state.mac_addrs[0][5] = 0xcc;*/
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_avail_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
+    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
 
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_avail_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
+    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
 
     return;
 }

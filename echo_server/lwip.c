@@ -31,9 +31,9 @@
 #define BUF_SIZE 2048
 
 /* Memory regions. These all have to be here to keep compiler happy */
-uintptr_t rx_avail;
+uintptr_t rx_free;
 uintptr_t rx_used;
-uintptr_t tx_avail;
+uintptr_t tx_free;
 uintptr_t tx_used;
 uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
@@ -108,11 +108,11 @@ static bool notify_rx = false;
 
 static inline void return_buffer(ethernet_buffer_t *buffer)
 {
-    /* As the rx_available ring is the size of the number of buffers we have,
+    /* As the rx_free ring is the size of the number of buffers we have,
     the ring should never be full. 
     FIXME: This full condition could change... */
-    bool was_empty = ring_empty(state.rx_ring.avail_ring);
-    int err = enqueue_avail(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    bool was_empty = ring_empty(state.rx_ring.free_ring);
+    int err = enqueue_free(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
     assert(!err);
     if (was_empty) {
         notify_rx = true;
@@ -183,9 +183,9 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
     unsigned int len;
     ethernet_buffer_t *buffer;
 
-    int err = dequeue_avail(&(state.tx_ring), &addr, &len, (void **)&buffer);
+    int err = dequeue_free(&(state.tx_ring), &addr, &len, (void **)&buffer);
     if (err) {
-        print("LWIP|ERROR: TX available ring is empty!\n");
+        print("LWIP|ERROR: TX free ring is empty!\n");
         return NULL;
     }
 
@@ -203,7 +203,7 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
-    /* Grab an available TX buffer, copy pbuf data over,
+    /* Grab an free TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     err_t ret = ERR_OK;
 
@@ -240,7 +240,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, buffer);
     if (err) {
         print("LWIP|ERROR: TX used ring full\n");
-        err = enqueue_avail(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        err = enqueue_free(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
         assert(!err);
         return ERR_MEM;
     }
@@ -252,7 +252,7 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
 void process_rx_queue(void)
 {
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -356,8 +356,8 @@ void init(void)
     print(": elf PD init function running\n");
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 1);
-    ring_init(&state.tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 1);
+    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
+    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 1);
 
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -369,7 +369,7 @@ void init(void)
             .index = i,
             .in_use = false,
         };
-        int err = enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_free(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
         assert(!err);
     }
 
@@ -383,7 +383,7 @@ void init(void)
             .in_use = false,
         };
 
-        int err = enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_free(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
         assert(!err);
     }
 

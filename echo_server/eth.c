@@ -27,9 +27,9 @@ uintptr_t shared_dma_vaddr_tx;
 uintptr_t shared_dma_paddr_tx;
 uintptr_t rx_cookies;
 uintptr_t tx_cookies;
-uintptr_t rx_avail;
+uintptr_t rx_free;
 uintptr_t rx_used;
-uintptr_t tx_avail;
+uintptr_t tx_free;
 uintptr_t tx_used;
 uintptr_t uart_base;
 
@@ -179,8 +179,8 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     uintptr_t addr;
     unsigned int len;
 
-    /* Try to grab a buffer from the available ring */
-    if (driver_dequeue(rx_ring.avail_ring, &addr, &len, cookie)) {
+    /* Try to grab a buffer from the free ring */
+    if (driver_dequeue(rx_ring.free_ring, &addr, &len, cookie)) {
         return 0;
     }
 
@@ -361,9 +361,9 @@ complete_tx(volatile struct enet_regs *eth)
     unsigned int cnt = 0;
     int enqueued = 0;
 
-    int was_empty = ring_empty(tx_ring.avail_ring);
+    int was_empty = ring_empty(tx_ring.free_ring);
 
-    while (head != ring->tail && !ring_full(tx_ring.avail_ring)) {
+    while (head != ring->tail && !ring_full(tx_ring.free_ring)) {
         if (0 == cnt) {
             cnt = tx_lengths[head];
             if ((0 == cnt) || (cnt > TX_COUNT)) {
@@ -400,7 +400,7 @@ complete_tx(volatile struct enet_regs *eth)
             /* give the buffer back */
             buff_desc_t *desc = (buff_desc_t *)cookie;
 
-            int err = enqueue_avail(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            int err = enqueue_free(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
             assert(!err);
             enqueued++;
         }
@@ -544,8 +544,8 @@ eth_setup(void)
 void init_post()
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_avail, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
 
     fill_rx_bufs();
     print(sel4cp_name);
