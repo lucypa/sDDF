@@ -5,6 +5,15 @@
 
 #pragma once
 
+/* The reference manual used to acquire these values is:
+ *
+ * i.MX 8M Mini Applications Processor Reference Manual.
+ * Document number: IMX8MMRM.
+ * Rev. 3, 11/2020.
+ *
+ * The ethernet device is described in section 11.5.
+ */
+
 #define ECR_RESET       (1UL)
 #define ECR_DBSWP       (1UL << 8) /* descriptor byte swapping enable */
 #define MIBC_DIS        (1UL << 31)
@@ -19,9 +28,12 @@
 #define ECR_SPEED       (1UL << 5) /* Enable 1000Mbps */
 #define PAUSE_OPCODE_FIELD (1UL << 16)
 #define TCR_FDEN        (1UL << 2) /* Full duplex enable */
-#define TX_ICEN         (1UL << 31)
+#define ICEN            (1UL << 31) /* enable irq coalescence */
 
-
+/*
+ * Section 11.5.5.1 - Interrupt Event Register (ENET_EIR)
+ * Page 3776.
+*/
 #define NETIRQ_BABR     (1UL << 30) /* Babbling Receive Error          */
 #define NETIRQ_BABT     (1UL << 29) /* Babbling Transmit Error         */
 #define NETIRQ_GRA      (1UL << 28) /* Graceful Stop Complete          */
@@ -39,7 +51,7 @@
 #define NETIRQ_TS_AVAIL (1UL << 16) /* Transmit Timestamp Available    */
 #define NETIRQ_TS_TIMER (1UL << 15) /* Timestamp Timer                 */
 
-#define IRQ_MASK    (NETIRQ_RXF | NETIRQ_TXF | NETIRQ_EBERR)
+#define IRQ_MASK        (NETIRQ_RXF | NETIRQ_TXF | NETIRQ_EBERR)
 
 #define RXD_EMPTY       (1UL << 15)
 #define WRAP            (1UL << 13)
@@ -131,6 +143,7 @@ struct mib_regs {
     uint32_t res1[7];
 };
 
+/* The ENET memory map can be found in Section 11.5.5 */
 struct enet_regs {
     /* Configuration */
     uint32_t res0[1];
@@ -154,10 +167,14 @@ struct enet_regs {
     uint32_t palr;   /* 0E4 Physical Address Lower Register */
     uint32_t paur;   /* 0E8 Physical Address Upper Register */
     uint32_t opd;    /* 0EC Opcode/Pause Duration Register */
-    uint32_t txic0;
-    uint32_t txic1;
-    uint32_t txic2;
-    uint32_t res8[7];
+    uint32_t txic0;  /* 0xf0 Tx Interrupt Coalescing ring 0 */
+    uint32_t txic1;  /* 0xf4 Tx Interrupt Coalescing ring 1 */
+    uint32_t txic2;  /* 0xf8 Tx Interrupt Coalescing ring 2 */
+    uint32_t res8[1];
+    uint32_t rxic0;  /* 0x100 Rx Interrupt Coalescing ring 0 */
+    uint32_t rxic1;  /* 0x104 Rx Interrupt Coalescing ring 0 */
+    uint32_t rxic2;  /* 0x108 Rx Interrupt Coalescing ring 0 */
+    uint32_t res8a[3];
     uint32_t iaur;   /* 118 Descriptor Individual Upper Address Register */
     uint32_t ialr;   /* 11C Descriptor Individual Lower Address Register */
     uint32_t gaur;   /* 120 Descriptor Group Upper Address Register */

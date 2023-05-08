@@ -6,7 +6,7 @@
 #pragma once
 
 #define UART_REG(x) ((volatile uint32_t *)(UART_BASE + (x)))
-#define UART_BASE 0x5000000 //0x30890000 in hardware on imx8mm. 
+#define UART_BASE 0x5000000 //0x30890000 in hardware on imx8mm.
 #define STAT 0x98
 #define TRANSMIT 0x40
 #define STAT_TDRE (1 << 14)
@@ -31,10 +31,12 @@ putC(uint8_t ch)
 static void
 print(const char *s)
 {
+#ifndef NO_PRINTING
     while (*s) {
         putC(*s);
         s++;
     }
+#endif
 }
 
 static char
@@ -56,3 +58,56 @@ puthex64(uint64_t val)
     }
     print(buffer);
 }
+
+static char
+decchar(unsigned int v) {
+    return '0' + v;
+}
+
+static void
+put8(uint8_t x)
+{
+    char tmp[4];
+    unsigned i = 3;
+    tmp[3] = 0;
+    do {
+        uint8_t c = x % 10;
+        tmp[--i] = decchar(c);
+        x /= 10;
+    } while (x);
+    print(&tmp[i]);
+}
+
+static void _assert_fail(
+    const char  *assertion,
+    const char  *file,
+    unsigned int line,
+    const char  *function)
+{
+    print("Failed assertion '");
+    print(assertion);
+    print("' at ");
+    print(file);
+    print(":");
+    put8(line);
+    print(" in function ");
+    print(function);
+    print("\n");
+    while (1) {}
+}
+
+#ifdef NO_ASSERT
+
+#define assert(expr)
+
+#else
+
+#define assert(expr) \
+    do { \
+        if (!(expr)) { \
+            _assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__); \
+        } \
+    } while(0)
+
+#endif
+

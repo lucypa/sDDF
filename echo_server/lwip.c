@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <sel4cp.h>
 #include <string.h>
-
 #include "lwip/init.h"
 #include "netif/etharp.h"
 #include "lwip/pbuf.h"
@@ -36,10 +35,11 @@ uintptr_t rx_avail;
 uintptr_t rx_used;
 uintptr_t tx_avail;
 uintptr_t tx_used;
-uintptr_t copy_rx;
 uintptr_t shared_dma_vaddr_rx;
 uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
+
+static bool notify_tx = false;
 
 typedef enum {
     ORIGIN_RX_QUEUE,
@@ -74,14 +74,14 @@ typedef struct state {
 } state_t;
 
 state_t state;
-uint64_t incoming = 0;
-uint64_t outgoing = 0;
 
-/* LWIP mempool declare literally just initialises an array big enough with the correct alignment */
+/* 
+ * LWIP mempool declare literally just initialises an array 
+ * big enough with the correct alignment 
+ */
 typedef struct lwip_custom_pbuf {
     struct pbuf_custom custom;
     ethernet_buffer_t *buffer;
-    state_t *state;
 } lwip_custom_pbuf_t;
 LWIP_MEMPOOL_DECLARE(
     RX_POOL,
@@ -104,11 +104,19 @@ dump_mac(uint8_t *mac)
     sel4cp_dbg_putc('\n');
 }
 
-static inline void return_buffer(state_t *state, ethernet_buffer_t *buffer)
+static bool notify_rx = false;
+
+static inline void return_buffer(ethernet_buffer_t *buffer)
 {
     /* As the rx_available ring is the size of the number of buffers we have,
-    the ring should never be full. */
-    enqueue_avail(&(state->rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    the ring should never be full. 
+    FIXME: This full condition could change... */
+    bool was_empty = ring_empty(state.rx_ring.avail_ring);
+    int err = enqueue_avail(&(state.rx_ring), buffer->buffer, BUF_SIZE, buffer);
+    assert(!err);
+    if (was_empty) {
+        notify_rx = true;
+    }
 }
 
 /**
@@ -125,7 +133,7 @@ static void interface_free_buffer(struct pbuf *buf)
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
 
     SYS_ARCH_PROTECT(old_level);
-    return_buffer(custom_pbuf->state, custom_pbuf->buffer);
+    return_buffer(custom_pbuf->buffer);
     LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
     SYS_ARCH_UNPROTECT(old_level);
 }
@@ -136,14 +144,14 @@ static void interface_free_buffer(struct pbuf *buf)
  * @param state client state data.
  * @param buffer ethernet buffer containing metadata for the actual buffer
  * @param length length of data
- * 
+ *
  * @return the newly created pbuf.
  */
 static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *buffer, size_t length)
 {
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) LWIP_MEMPOOL_ALLOC(RX_POOL);
 
-    custom_pbuf->state = state;
+    // custom_pbuf->state = state;
     custom_pbuf->buffer = buffer;
     custom_pbuf->custom.custom_free_function = interface_free_buffer;
 
@@ -164,8 +172,8 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
  * @param length length of buffer required
  *
  */
-static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
-{   
+static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
+{
     if (BUF_SIZE < length) {
         sel4cp_dbg_puts("Requested buffer size too large.");
         return NULL;
@@ -175,19 +183,19 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
     unsigned int len;
     ethernet_buffer_t *buffer;
 
-    if (ring_empty(state->tx_ring.avail_ring)) {
-        print("TX available ring is empty!\n");
+    int err = dequeue_avail(&(state.tx_ring), &addr, &len, (void **)&buffer);
+    if (err) {
+        print("LWIP|ERROR: TX available ring is empty!\n");
         return NULL;
     }
 
-    dequeue_avail(&state->tx_ring, &addr, &len, (void **)&buffer);
     if (!buffer) {
-        print("lwip: dequeued a null ethernet buffer\n");
+        print("LWIP|ERROR: dequeued a null ethernet buffer\n");
         return NULL;
     }
 
     if (addr != buffer->buffer) {
-        print("sanity check failed\n");
+        print("LWIP|ERROR: sanity check failed\n");
     }
 
     return buffer;
@@ -195,19 +203,16 @@ static inline ethernet_buffer_t *alloc_tx_buffer(state_t *state, size_t length)
 
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
-    outgoing++;
     /* Grab an available TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     err_t ret = ERR_OK;
 
     if (p->tot_len > BUF_SIZE) {
-        print("lwip_eth_send total length > BUF SIZE\n");
+        print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
         return ERR_MEM;
     }
 
-    state_t *state = (state_t *)netif->state;
-
-    ethernet_buffer_t *buffer = alloc_tx_buffer(state, p->tot_len);
+    ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
     if (buffer == NULL) {
         return ERR_MEM;
     }
@@ -226,32 +231,28 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
     if (err) {
-        print("ARM Vspace clean failed\n");
-        print(err);
+        print("LWIP|ERROR: ARM VSpace clean failed: ");
+        puthex64(err);
+        print("\n");
     }
 
     /* insert into the used tx queue */
-    int error = enqueue_used(&state->tx_ring, (uintptr_t)frame, copied, buffer);
-    if (error) {
-        print("TX used ring full\n");
-        enqueue_avail(&(state->tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+    err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, buffer);
+    if (err) {
+        print("LWIP|ERROR: TX used ring full\n");
+        err = enqueue_avail(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        assert(!err);
         return ERR_MEM;
     }
 
     /* Notify the server for next time we recv() */
-    have_signal = true;
-    signal_msg = seL4_MessageInfo_new(0, 0, 0, 0);
-    signal = (BASE_OUTPUT_NOTIFICATION_CAP + TX_CH);
-    /* NOTE: If driver is passive, we want to Call instead. */
-    //sel4cp_notify(TX_CH);
+    notify_tx = true;
     return ret;
 }
 
-void process_rx_queue(void) 
+void process_rx_queue(void)
 {
-    sel4cp_dbg_puts("lwip: process_rx_queue\n");
-    while(!ring_empty(state.rx_ring.used_ring)) {
-        incoming++;
+    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.avail_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -259,21 +260,14 @@ void process_rx_queue(void)
         dequeue_used(&state.rx_ring, &addr, &len, (void **)&buffer);
 
         if (addr != buffer->buffer) {
-            print("sanity check failed\n");
-        }
-
-        /* Invalidate the memory */
-        int err = seL4_ARM_VSpace_Invalidate_Data(3, buffer->buffer, buffer->buffer + ETHER_MTU);
-        if (err) {
-            print("ARM Vspace invalidate failed\n");
-            print(err);
+            print("LWIP|ERROR: sanity check failed\n");
         }
 
         struct pbuf *p = create_interface_buffer(&state, (void *)buffer, len);
 
         if (state.netif.input(p, &state.netif) != ERR_OK) {
             // If it is successfully received, the receiver controls whether or not it gets freed.
-            print("netif.input() != ERR_OK");
+            print("LWIP|ERROR: netif.input() != ERR_OK");
             pbuf_free(p);
         }
     }
@@ -321,6 +315,13 @@ static void netif_status_callback(struct netif *netif)
 
 static void get_mac(void)
 {
+    /* For now just use a dummy hardcoded mac address.*/
+    state.mac[0] = 0x52;
+    state.mac[1] = 0x54;
+    state.mac[2] = 0x1;
+    state.mac[3] = 0;
+    state.mac[4] = 0;
+    state.mac[5] = 0;
     /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
@@ -330,16 +331,10 @@ static void get_mac(void)
     state.mac[3] = palr & 0xff;
     state.mac[4] = paur >> 24;
     state.mac[5] = paur >> 16 & 0xff;*/
-    state.mac[0] = 0;
-    state.mac[1] = 0x4;
-    state.mac[2] = 0x9f;
-    state.mac[3] = 0x5;
-    state.mac[4] = 0xf8;
-    state.mac[5] = 0xcc;
 }
 
 void init_post(void)
-{   
+{
     dump_mac(state.mac);
     netif_set_status_callback(&(state.netif), netif_status_callback);
     netif_set_up(&(state.netif));
@@ -374,7 +369,8 @@ void init(void)
             .index = i,
             .in_use = false,
         };
-        enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_avail(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
+        assert(!err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -387,7 +383,8 @@ void init(void)
             .in_use = false,
         };
 
-        enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        int err = enqueue_avail(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);
+        assert(!err);
     }
 
     lwip_init();
@@ -408,9 +405,9 @@ void init(void)
     state.netif.name[0] = 'e';
     state.netif.name[1] = '0';
 
-    if (!netif_add(&(state.netif), &ipaddr, &netmask, &gw, &state,
+    if (!netif_add(&(state.netif), &ipaddr, &netmask, &gw, (void *)&state,
               ethernet_init, ethernet_input)) {
-        sel4cp_dbg_puts("Netif add returned NULL\n");
+        print("Netif add returned NULL\n");
     }
 
     netif_set_default(&(state.netif));
@@ -423,23 +420,39 @@ void notified(sel4cp_channel ch)
     switch(ch) {
         case RX_CH:
             process_rx_queue();
-            return;
+            break;
         case INIT:
             init_post();
-            return;
+            break;
         case IRQ:
             /* Timer */
             irq(ch);
             sel4cp_irq_ack(ch);
-            return;
+            break;
         case TX_CH:
-            print("Lwip incoming: ");
-            puthex64(incoming);
-            print("\nLwip outgoing: ");
-            puthex64(outgoing);
-            print("\n");
+            /*
+             * We stop processing the Rx ring if there are no
+             * Tx slots avilable.
+             * Resume here.
+             */
+            if (!ring_empty(state.rx_ring.used_ring))
+                process_rx_queue();
+            break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
+            assert(0);
             break;
+    }
+    if (notify_rx) {
+        notify_rx = false;
+        sel4cp_notify_delayed(RX_CH);
+    }
+    if (notify_tx) {
+        notify_tx = false;
+        if (!have_signal) {
+            sel4cp_notify_delayed(TX_CH);
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH){
+            sel4cp_notify(TX_CH);
+        }
     }
 }

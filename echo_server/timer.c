@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-/* 
- * This is a basic single client timer driver intended purely for 
- * use by the lwIP stack for TCP. 
+/*
+ * This is a basic single client timer driver intended purely for
+ * use by the lwIP stack for TCP.
  */
 
 #include "timer.h"
@@ -89,11 +89,11 @@ void gpt_init(void)
 
     gpt[CR] = cr;
 
-    gpt[IR] = ( 
+    gpt[IR] = (
         (1 << 5) // rollover interrupt
     );
 
-    // set a timer! 
+    // set a timer!
     uint64_t abs_timeout = get_ticks() + (LWIP_TICK_MS * NS_IN_MS);
     gpt[OCR1] = abs_timeout;
     gpt[IR] |= 1;

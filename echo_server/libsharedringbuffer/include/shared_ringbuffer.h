@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <sel4cp.h>
+#include "util.h"
 #include "fence.h"
 
 #define SIZE 512
@@ -71,11 +72,13 @@ static inline int ring_empty(ring_buffer_t *ring)
  */
 static inline int ring_full(ring_buffer_t *ring)
 {
+    assert((ring->write_idx - ring->read_idx) >= 0);
     return !((ring->write_idx - ring->read_idx + 1) % SIZE);
 }
 
 static inline int ring_size(ring_buffer_t *ring)
 {
+    assert((ring->write_idx - ring->read_idx) >= 0);
     return (ring->write_idx - ring->read_idx);
 }
 
@@ -102,17 +105,17 @@ static inline void notify(ring_handle_t *ring)
  */
 static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int len, void *cookie)
 {
+    assert(buffer != 0);
     if (ring_full(ring)) {
-        sel4cp_dbg_puts("Ring full");
         return -1;
     }
 
     ring->buffers[ring->write_idx % SIZE].encoded_addr = buffer;
     ring->buffers[ring->write_idx % SIZE].len = len;
     ring->buffers[ring->write_idx % SIZE].cookie = cookie;
-    ring->write_idx++;
 
     THREAD_MEMORY_RELEASE();
+    ring->write_idx++;
 
     return 0;
 }
@@ -130,9 +133,10 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
 static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
     if (ring_empty(ring)) {
-        //sel4cp_dbg_puts("Ring is empty");
         return -1;
     }
+
+    assert(ring->buffers[ring->read_idx % SIZE].encoded_addr != 0);
 
     *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
@@ -153,10 +157,11 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
  * @param len length of data inside the buffer above.
  * @param cookie optional pointer to data required on dequeueing.
  *
- * @return -1 when ring is empty, 0 on success.
+ * @return -1 when ring is full, 0 on success.
  */
 static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
+    assert(addr);
     return enqueue(ring->avail_ring, addr, len, cookie);
 }
 
@@ -169,10 +174,11 @@ static inline int enqueue_avail(ring_handle_t *ring, uintptr_t addr, unsigned in
  * @param len length of data inside the buffer above.
  * @param cookie optional pointer to data required on dequeueing.
  *
- * @return -1 when ring is empty, 0 on success.
+ * @return -1 when ring is full, 0 on success.
  */
 static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int len, void *cookie)
 {
+    assert(addr);
     return enqueue(ring->used_ring, addr, len, cookie);
 }
 
@@ -220,7 +226,7 @@ static inline int dequeue_used(ring_handle_t *ring, uintptr_t *addr, unsigned in
  */
 static int driver_dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *len, void **cookie)
 {
-    if (!((ring->write_idx - ring->read_idx) % SIZE)) {
+    if (ring_empty(ring)) {
         return -1;
     }
 
