@@ -325,7 +325,7 @@ complete_tx(volatile struct enet_regs *eth)
             head = 0;
         }
 
-        if (0 == --cnt) {
+        if (0 == --cnt && !ring_full(tx_ring.avail_ring)) {
             ring->head = head;
             /* race condition if add/remove is not synchronized. */
             ring->remain += cnt_org;
