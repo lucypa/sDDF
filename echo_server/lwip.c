@@ -24,6 +24,7 @@
 #define RX_CH  2
 #define TX_CH  3
 #define INIT   6
+#define ARP    7
 
 #define LINK_SPEED 1000000000 // Gigabit
 #define ETHER_MTU 1500
@@ -93,15 +94,15 @@ LWIP_MEMPOOL_DECLARE(
 static void
 dump_mac(uint8_t *mac)
 {
-    sel4cp_dbg_puts("Lwip MAC: ");
+    print("Lwip MAC: ");
     for (unsigned i = 0; i < 6; i++) {
-        sel4cp_dbg_putc(hexchar((mac[i] >> 4) & 0xf));
-        sel4cp_dbg_putc(hexchar(mac[i] & 0xf));
+        put8((mac[i] >> 4) & 0xf);
+        put8(mac[i] & 0xf);
         if (i < 5) {
-            sel4cp_dbg_putc(':');
+            putC(':');
         }
     }
-    sel4cp_dbg_putc('\n');
+    putC('\n');
 }
 
 static bool notify_rx = false;
@@ -305,6 +306,11 @@ static err_t ethernet_init(struct netif *netif)
 static void netif_status_callback(struct netif *netif)
 {
     if (dhcp_supplied_address(netif)) {
+        /* Tell the ARP component so we it can respond to ARP requests. */
+        sel4cp_mr_set(0, 0);
+        sel4cp_mr_set(1, ip4_addr_get_u32(netif_ip4_addr(netif)));
+        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 2));
+
         print("DHCP request finished, IP address for netif ");
         print(netif->name);
         print(" is: ");

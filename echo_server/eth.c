@@ -21,10 +21,6 @@
 /* Memory regions. These all have to be here to keep compiler happy */
 uintptr_t hw_ring_buffer_vaddr;
 uintptr_t hw_ring_buffer_paddr;
-uintptr_t shared_dma_vaddr_rx;
-uintptr_t shared_dma_paddr_rx;
-uintptr_t shared_dma_vaddr_tx;
-uintptr_t shared_dma_paddr_tx;
 uintptr_t rx_cookies;
 uintptr_t tx_cookies;
 uintptr_t rx_free;
@@ -70,7 +66,6 @@ typedef struct {
     unsigned int tail;   /* Next slot to be given a buffer */
     unsigned int head;   /* (probably) next slot to be filled by DMA */
     volatile struct descriptor *descr; /* pointer to NIC's ringbuffer */
-    uintptr_t phys;     /* physical address of buffer region. */
     void **cookies;     /* For client to use */
 } ring_ctx_t;
 
@@ -122,31 +117,6 @@ dump_mac(uint8_t *mac)
     putC('\n');
 }
 
-static uintptr_t
-get_phys_addr(uintptr_t virtual, int tx)
-{
-    uint64_t offset;
-    uintptr_t phys;
-    if (tx) {
-        offset = virtual - shared_dma_vaddr_tx;
-    } else {
-        offset = virtual - shared_dma_vaddr_rx;
-    }
-
-    if (offset < 0) {
-        print("get_phys_addr: offset < 0");
-        return 0;
-    }
-
-    if (tx) {
-        phys = shared_dma_paddr_tx + offset;
-    } else {
-        phys = shared_dma_paddr_rx + offset;
-    }
-
-    return phys;
-}
-
 static void update_ring_slot(
     ring_ctx_t *ring,
     unsigned int idx,
@@ -184,7 +154,7 @@ alloc_rx_buf(size_t buf_size, void **cookie)
         return 0;
     }
 
-    return get_phys_addr(addr, 0);
+    return addr;
 }
 
 static void fill_rx_bufs(void)
@@ -344,10 +314,8 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
-    // We need to put in an empty condition here.
     while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        uintptr_t phys = get_phys_addr(buffer, 1);
-        raw_tx(eth, 1, &phys, &len, cookie);
+        raw_tx(eth, 1, &buffer, &len, cookie);
     }
 }
 
@@ -460,7 +428,6 @@ eth_setup(void)
     rx.remain = rx.cnt - 2;
     rx.tail = 0;
     rx.head = 0;
-    rx.phys = shared_dma_paddr_rx;
     rx.cookies = (void **)rx_cookies;
     rx.descr = (volatile struct descriptor *)hw_ring_buffer_vaddr;
 
@@ -468,7 +435,6 @@ eth_setup(void)
     tx.remain = tx.cnt - 2;
     tx.tail = 0;
     tx.head = 0;
-    tx.phys = shared_dma_paddr_tx;
     tx.cookies = (void **)tx_cookies;
     tx.descr = (volatile struct descriptor *)(hw_ring_buffer_vaddr + (sizeof(struct descriptor) * RX_COUNT));
 
@@ -612,9 +578,9 @@ void notified(sel4cp_channel ch)
             handle_tx(eth);
             break;
         default:
-            sel4cp_dbg_puts("eth driver: received notification on unexpected channel: ");
+            print("eth driver: received notification on unexpected channel: ");
             puthex64(ch);
-            sel4cp_dbg_puts("\n");
+            print("\n");
             assert(0);
             break;
     }

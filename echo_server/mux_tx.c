@@ -3,16 +3,22 @@
 
 uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
-
 uintptr_t tx_free_cli;
 uintptr_t tx_used_cli;
+uintptr_t tx_free_arp;
+uintptr_t tx_used_arp;
 
-uintptr_t shared_dma_vaddr;
+uintptr_t shared_dma_vaddr_cli;
+uintptr_t shared_dma_paddr_cli;
+uintptr_t shared_dma_vaddr_arp;
+uintptr_t shared_dma_paddr_arp;
 uintptr_t uart_base;
 
 #define CLIENT_CH 0
-#define NUM_CLIENTS 1
-#define DRIVER_CH 1
+#define ARP 1
+#define NUM_CLIENTS 2
+#define DRIVER_CH 2
+#define DMA_SIZE 0x200000
 
 typedef struct state {
     /* Pointers to shared buffers */
@@ -21,6 +27,60 @@ typedef struct state {
 } state_t;
 
 state_t state;
+
+static uintptr_t
+get_phys_addr(uintptr_t virtual)
+{
+    uint64_t offset;
+    if (virtual >= shared_dma_vaddr_cli && virtual < shared_dma_vaddr_cli + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli;
+        if (offset < 0) {
+            print("get_phys_addr: offset < 0");
+            return 0;
+        }
+        return shared_dma_paddr_cli + offset;
+    } else {
+        offset = virtual - shared_dma_vaddr_arp;
+        if (offset < 0) {
+            print("get_phys_addr: offset < 0");
+            return 0;
+        }
+        return shared_dma_paddr_arp + offset;
+    }
+}
+
+static uintptr_t
+get_virt_addr(uintptr_t phys)
+{
+    uint64_t offset;
+    uintptr_t base; 
+    if (phys >= shared_dma_paddr_cli && phys < shared_dma_paddr_cli + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli;
+        base = shared_dma_vaddr_cli;
+    } else {
+        offset = phys - shared_dma_paddr_arp;
+        base = shared_dma_vaddr_arp;
+    }
+
+    if (offset < 0 || offset >= DMA_SIZE) {
+        print("get_virt_addr: offset < 0");
+        return 0;
+    }
+
+    return base + offset;
+}
+
+static int
+get_client(uintptr_t addr)
+{
+    if (addr >= shared_dma_vaddr_cli && addr < shared_dma_vaddr_cli + DMA_SIZE) {
+        return CLIENT_CH;
+    } else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
+        return ARP;
+    }
+    print("MUX TX|ERROR: Buffer out of range\n");
+    assert(0);
+}
 
 /*
 Loop over all used tx buffers in client queues and enqueue to driver.
@@ -31,17 +91,21 @@ void process_tx_ready(void)
     uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
 
-    while (!ring_empty(state.tx_ring_clients[0].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-        uintptr_t addr;
-        unsigned int len;
-        void *cookie;
+    for (int client = 0; client < NUM_CLIENTS; client++) {
+        while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
+            uintptr_t addr;
+            unsigned int len;
+            void *cookie;
 
-        int err = dequeue_used(&state.tx_ring_clients[0], &addr, &len, &cookie);
-        assert(!err);
-        err = enqueue_used(&state.tx_ring_drv, addr, len, cookie);
-        assert(!err);
+            int err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
+            assert(!err);
+            uintptr_t phys = get_phys_addr(addr);
+            assert(phys);
+            err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
+            assert(!err);
 
-        enqueued += 1;
+            enqueued += 1;
+        }
     }
 
     if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
@@ -60,13 +124,16 @@ void process_tx_complete(void)
 {
     bool was_empty = ring_empty(state.tx_ring_clients[0].free_ring);
     bool enqueued = false;
-    while (!ring_empty(state.tx_ring_drv.free_ring) && !ring_full(state.tx_ring_clients[0].free_ring)) {
+    while (!ring_empty(state.tx_ring_drv.free_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
         int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
         assert(!err);
-        err = enqueue_free(&state.tx_ring_clients[0], addr, len, cookie);
+        uintptr_t virt = get_virt_addr(addr);
+        assert(virt);
+
+        err = enqueue_free(&state.tx_ring_clients[get_client(virt)], virt, len, cookie);
         assert(!err);
         enqueued = true;
     }
@@ -78,7 +145,7 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == CLIENT_CH || ch == DRIVER_CH) {
+    if (ch == CLIENT_CH || ch == ARP || ch == DRIVER_CH ) {
         process_tx_complete();
         process_tx_ready();
     } else {
@@ -95,6 +162,7 @@ void init(void)
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
     ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 0);
 
     print("MUX: initialised\n");
 
