@@ -90,7 +90,6 @@ static int
 match_arp_to_client(uint32_t addr)
 {
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        char buf[16];
         if (ipv4_addrs[i] == addr) {
             return i;
         }
@@ -185,9 +184,12 @@ process_rx_complete(void)
                 client = match_arp_to_client(pkt->ipdst_addr);
                 if (client >= 0) {
                     // if so, send a response. 
-                    if (!arp_reply(&mac_addrs[client], &pkt->ethsrc_addr,
-                                &mac_addrs[client], pkt->ipdst_addr,
-                                &pkt->hwsrc_addr, pkt->ipsrc_addr))
+                    if (!arp_reply(&mac_addrs[client],
+                                &pkt->ethsrc_addr,
+                                &mac_addrs[client],
+                                pkt->ipdst_addr,
+                                &pkt->hwsrc_addr,
+                                pkt->ipsrc_addr))
                     {
                         transmitted++;
                     }
@@ -201,7 +203,7 @@ process_rx_complete(void)
 
     if (transmitted) {
         // notify tx mux
-         sel4cp_notify_delayed(TX_CH);
+        sel4cp_notify_delayed(TX_CH);
     }
 }
 
@@ -223,13 +225,13 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
         return sel4cp_msginfo_new(0, 0);
     }
 
-    // first register contains a number for the protocol:
+    // label is the protocol:
     // eg change my ip or register a new one.
-    uint32_t proto = sel4cp_mr_get(0);
-    uint32_t ip_addr = sel4cp_mr_get(1);
+    // reg 1 is the ip address. 
+    uint32_t ip_addr = sel4cp_mr_get(0);
     char buf[16];
 
-    switch (proto) {
+    switch (sel4cp_msginfo_get_label(msginfo)) {
         case REG_IP:
             print("Client registering ip address: ");
             print(print_ipaddr(ip_addr, buf, 16));

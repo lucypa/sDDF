@@ -20,7 +20,7 @@
 #include "echo.h"
 #include "timer.h"
 
-#define IRQ    1
+#define TIMER  1
 #define RX_CH  2
 #define TX_CH  3
 #define INIT   6
@@ -307,9 +307,8 @@ static void netif_status_callback(struct netif *netif)
 {
     if (dhcp_supplied_address(netif)) {
         /* Tell the ARP component so we it can respond to ARP requests. */
-        sel4cp_mr_set(0, 0);
-        sel4cp_mr_set(1, ip4_addr_get_u32(netif_ip4_addr(netif)));
-        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 2));
+        sel4cp_mr_set(0, ip4_addr_get_u32(netif_ip4_addr(netif)));
+        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 1));
 
         print("DHCP request finished, IP address for netif ");
         print(netif->name);
@@ -394,8 +393,7 @@ void init(void)
     }
 
     lwip_init();
-
-    gpt_init();
+    set_timeout();
 
     LWIP_MEMPOOL_INIT(RX_POOL);
 
@@ -430,10 +428,13 @@ void notified(sel4cp_channel ch)
         case INIT:
             init_post();
             break;
-        case IRQ:
+        case TIMER:
             /* Timer */
-            irq(ch);
-            sel4cp_irq_ack(ch);
+            print("Got a timeout!");
+            // check timeouts.
+            sys_check_timeouts();
+            // set a new timeout
+            set_timeout();
             break;
         case TX_CH:
             /*

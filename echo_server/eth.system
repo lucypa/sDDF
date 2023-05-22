@@ -69,9 +69,6 @@
             <map mr="tx_free_drv" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
             <map mr="tx_used_drv" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
 
-            <!--<map mr="shared_dma_rx" vaddr="0x2_400_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
-            <map mr="shared_dma_tx_cli" vaddr="0x2_600_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" /> -->
-
             <irq irq="152" id="0" /> <!--> ethernet interrupt -->
 
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
@@ -136,8 +133,6 @@
 
         <protection_domain name="lwip" priority="97" budget="20000" pd_id="5">
             <program_image path="lwip.elf" />
-
-            <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
             <!-- shared memory for ring buffer mechanism -->
@@ -152,8 +147,6 @@
 
             <!-- shared memory used for benchmarking -->
             <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
-
-            <irq irq="87" id="1" /> <!-- timer interrupt -->
         </protection_domain>
 
         <protection_domain name="arp" priority="98" budget="20000" pp="true" pd_id="6">
@@ -169,6 +162,12 @@
             <map mr="shared_dma_tx_arp" vaddr="0x2_200_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
             <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="r" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+        </protection_domain>
+
+        <protection_domain name="timer" priority="101" pp="true" pd_id="7">
+            <program_image path="timer.elf" />
+            <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
+            <irq irq="87" id="0" /> <!-- timer interrupt -->
         </protection_domain>
     </protection_domain>
 
@@ -230,5 +229,10 @@
     <channel>
         <end pd="arp" id="2" />
         <end pd="lwip" id="7" />
+    </channel>
+
+    <channel>
+        <end pd="timer" id="1" />
+        <end pd="lwip" id="1" />
     </channel>
 </system>

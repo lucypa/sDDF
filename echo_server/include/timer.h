@@ -13,6 +13,5 @@
 #include "lwip/netif.h"
 #include "lwip/timeouts.h"
 
-void gpt_init(void);
 u32_t sys_now(void);
-void irq(sel4cp_channel ch);
+void set_timeout(void);
