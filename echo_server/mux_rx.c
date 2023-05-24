@@ -150,12 +150,12 @@ void process_rx_complete(void)
             puthex64(addr);
             print("\n");
         }
-        /*err = seL4_ARM_VSpace_Invalidate_Data(3, vaddr, vaddr + ETHER_MTU);
+        err = seL4_ARM_VSpace_Invalidate_Data(3, vaddr, vaddr + ETHER_MTU);
         if (err) {
             print("MUX RX|ERROR: ARM Vspace invalidate failed\n");
             puthex64(err);
             print("\n");
-        }*/
+        }
 
         // Get MAC address and work out which client it is.
         int client = get_client(vaddr);
@@ -204,13 +204,19 @@ bool process_rx_free(void)
             void *buffer;
             int err = dequeue_free(&state.rx_ring_clients[i], &addr, &len, &buffer);
             assert(!err);
-
+            /*print("MUX RX| Process rx free: got vaddr: ");
+            puthex64(addr);*/
             int paddr = get_phys_addr(addr);
             if (!paddr) {
                 print("MUX RX|ERROR: get_phys_addr returned 0\nvirt: ");
                 puthex64(addr);
                 print("\n");
             }
+            /*print("\nMUX RX| Process rx free: got paddr: ");
+            puthex64(paddr);
+            print("\nFrom client: ");
+            puthex64(i);
+            print("\n");*/
 
             err = enqueue_free(&state.rx_ring_drv, paddr, len, buffer);
             assert(!err);

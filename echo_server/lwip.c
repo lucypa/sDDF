@@ -205,7 +205,7 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
     /* Grab an free TX buffer, copy pbuf data over,
-        add to used tx ring, notify server */
+    add to used tx ring, notify server */
     err_t ret = ERR_OK;
 
     if (p->tot_len > BUF_SIZE) {
@@ -217,7 +217,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
     if (buffer == NULL) {
         return ERR_MEM;
     }
-
     unsigned char *frame = (unsigned char *)buffer->buffer;
 
     /* Copy all buffers that need to be copied */
@@ -430,6 +429,9 @@ void notified(sel4cp_channel ch)
             init_post();
             break;
         case TIMER:
+            /* Timer */
+            print("Got a timeout!");
+            // check timeouts.
             sys_check_timeouts();
             // set a new timeout
             set_timeout();
