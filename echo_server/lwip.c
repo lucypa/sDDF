@@ -56,7 +56,7 @@ typedef struct ethernet_buffer {
     char origin;
     /* Index into buffer_metadata array */
     unsigned int index;
-    /* in use */
+
     bool in_use;
 } ethernet_buffer_t;
 
@@ -72,6 +72,10 @@ typedef struct state {
      * Metadata associated with buffers
      */
     ethernet_buffer_t buffer_metadata[NUM_BUFFERS * 2];
+
+    /* pbufs left to process */
+    struct pbuf *head;
+    struct pbuf *tail;
 } state_t;
 
 state_t state;
@@ -129,14 +133,16 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
  */
 static void interface_free_buffer(struct pbuf *buf)
 {
-    SYS_ARCH_DECL_PROTECT(old_level);
-
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
-
-    SYS_ARCH_PROTECT(old_level);
-    return_buffer(custom_pbuf->buffer);
-    LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
-    SYS_ARCH_UNPROTECT(old_level);
+    if (!custom_pbuf->buffer->in_use) {
+        SYS_ARCH_DECL_PROTECT(old_level);
+        SYS_ARCH_PROTECT(old_level);
+        return_buffer(custom_pbuf->buffer);
+        LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
+        SYS_ARCH_UNPROTECT(old_level);
+    } else {
+        print("pbuf still in use\n");
+    }
 }
 
 /**
@@ -202,58 +208,137 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
     return buffer;
 }
 
-static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
+void
+enqueue_pbufs(struct pbuf *chain)
 {
-    /* Grab an free TX buffer, copy pbuf data over,
-    add to used tx ring, notify server */
-    err_t ret = ERR_OK;
-
-    if (p->tot_len > BUF_SIZE) {
-        print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
-        return ERR_MEM;
+    if (state.head == NULL) {
+        state.head = chain;
+    } else {
+        state.tail->next = chain;
     }
-
-    ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
-    if (buffer == NULL) {
-        return ERR_MEM;
+    
+    // move the tail pointer to the new tail.
+    struct pbuf *curr = chain;
+    while (curr->next != NULL) {
+        curr = curr->next;
     }
-    unsigned char *frame = (unsigned char *)buffer->buffer;
-
-    /* Copy all buffers that need to be copied */
-    unsigned int copied = 0;
-    for (struct pbuf *curr = p; curr != NULL; curr = curr->next) {
-        unsigned char *buffer_dest = &frame[copied];
-        if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
-            /* Don't copy memory back into the same location */
-            memcpy(buffer_dest, curr->payload, curr->len);
-        }
-        copied += curr->len;
-    }
-
-    int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
-    if (err) {
-        print("LWIP|ERROR: ARM VSpace clean failed: ");
-        puthex64(err);
-        print("\n");
-    }
-
-    /* insert into the used tx queue */
-    err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, buffer);
-    if (err) {
-        print("LWIP|ERROR: TX used ring full\n");
-        err = enqueue_free(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
-        assert(!err);
-        return ERR_MEM;
-    }
-
-    /* Notify the server for next time we recv() */
-    notify_tx = true;
-    return ret;
+    state.tail = curr; 
 }
 
-void process_rx_queue(void)
+/* Grab an free TX buffer, copy pbuf data over,
+    add to used tx ring, notify server */
+static err_t
+lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
+    int err;
+    /* pbufs are a linked list. We can copy one at a time
+    until we run out of transmit buffers, then the remaining bufs
+    need to wait until we get the notification that more are available */
+    for (struct pbuf *curr = p; curr != NULL; curr = curr->next) {
+        ethernet_buffer_t *buffer = alloc_tx_buffer(curr->len);
+        if (buffer == NULL) {
+            // Put in a queue to process later!
+            print("Ran out of tx buffers\n");
+            if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
+                // mark as used so it doesn't get freed.
+                lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
+                pc->buffer->in_use = true;
+                enqueue_pbufs(curr);
+                break;
+            } else {
+                // if we couldn't allocate a transmit buffer for an
+                // lwip allocated pbuf 
+                // (eg a dhcp message) then we won't save the buffer
+                // as we are not responsible for freeing it.
+                return ERR_MEM;
+            }
+        }
+
+        // copy the buffer into a transmit buf. 
+        memcpy(buffer->buffer, curr->payload, curr->len);
+
+        // mark the old payload as no longer in use (so it gets properly freed) if it's
+        // origin is an RX buf.
+        if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
+            lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
+            pc->buffer->in_use = false;
+        }
+        
+        // cleanCache((uintptr_t)frame, (uintptr_t)frame + copied);
+        err = seL4_ARM_VSpace_Clean_Data(3, buffer->buffer, buffer->buffer + curr->len);
+        if (err) {
+            print("LWIP|ERROR: ARM VSpace clean failed: ");
+            puthex64(err);
+            print("\n");
+        }
+
+        /* insert into the used tx queue */
+        err = enqueue_used(&(state.tx_ring), buffer->buffer, curr->len, buffer);
+        if (err) {
+            print("LWIP|ERROR: TX used ring full\n");
+            return ERR_MEM;
+        }
+
+        /* Notify the server for next time we recv() */
+        notify_tx = true;
+    }
+
+    return ERR_OK;
+}
+
+void
+process_tx_queue(void)
+{
+    int err;
+    struct pbuf *curr = state.head;
+    struct pbuf *temp;
+    while(curr != NULL) {
+        ethernet_buffer_t *buffer = alloc_tx_buffer(curr->len);
+        if (buffer == NULL) {
+            break;
+        }
+
+        // copy the buffer into a transmit buf. 
+        err = memcpy(buffer->buffer, curr->payload, curr->len);
+
+        // mark the old payload as no longer in use (so it gets properly freed) if it's
+        // origin is an RX buf. As we only save the custom pbufs, this should always be true. 
+        if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
+            lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
+            pc->buffer->in_use = false;
+        }
+
+        err = seL4_ARM_VSpace_Clean_Data(3, buffer->buffer, buffer->buffer + curr->len);
+        if (err) {
+            print("LWIP|ERROR: ARM VSpace clean failed: ");
+            puthex64(err);
+            print("\n");
+        }
+
+        /* insert into the used tx queue */
+        err = enqueue_used(&(state.tx_ring), buffer->buffer, curr->len, buffer);
+        if (err) {
+            print("LWIP|ERROR: TX used ring full\n");
+            break;
+        }
+
+        /* Notify the server for next time we recv() */
+        notify_tx = true;
+
+        /* Free the the pbuf. */
+        temp = curr;
+        curr = curr->next;
+        pbuf_free(temp);
+    }
+
+    // if curr != NULL, we need to make sure we don't lose it and can come back
+    state.head = curr;
+}
+
+void
+process_rx_queue(void)
+{
+    while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -364,6 +449,8 @@ void init(void)
     ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
     ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 1);
 
+    state.head = NULL;
+    state.tail = NULL;
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         ethernet_buffer_t *buffer = &state.buffer_metadata[i];
@@ -429,8 +516,6 @@ void notified(sel4cp_channel ch)
             init_post();
             break;
         case TIMER:
-            /* Timer */
-            print("Got a timeout!");
             // check timeouts.
             sys_check_timeouts();
             // set a new timeout
@@ -442,8 +527,7 @@ void notified(sel4cp_channel ch)
              * Tx slots avilable.
              * Resume here.
              */
-            if (!ring_empty(state.rx_ring.used_ring))
-                process_rx_queue();
+            process_tx_queue();
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
@@ -458,7 +542,7 @@ void notified(sel4cp_channel ch)
         notify_tx = false;
         if (!have_signal) {
             sel4cp_notify_delayed(TX_CH);
-        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH){
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH) {
             sel4cp_notify(TX_CH);
         }
     }

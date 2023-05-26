@@ -35,14 +35,14 @@ get_phys_addr(uintptr_t virtual)
     if (virtual >= shared_dma_vaddr_cli && virtual < shared_dma_vaddr_cli + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_cli;
         if (offset < 0) {
-            print("get_phys_addr: offset < 0");
+            print("get_phys_addr: offset < 0\n");
             return 0;
         }
         return shared_dma_paddr_cli + offset;
     } else {
         offset = virtual - shared_dma_vaddr_arp;
-        if (offset < 0) {
-            print("get_phys_addr: offset < 0");
+        if (offset < 0 || offset > DMA_SIZE) {
+            print("get_phys_addr: offset < 0 || offset > DMA_SIZE\n");
             return 0;
         }
         return shared_dma_paddr_arp + offset;
@@ -63,7 +63,7 @@ get_virt_addr(uintptr_t phys)
     }
 
     if (offset < 0 || offset >= DMA_SIZE) {
-        print("get_virt_addr: offset < 0");
+        print("get_virt_addr: offset < 0 || offset > DMA_SIZE\n");
         return 0;
     }
 

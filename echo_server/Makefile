@@ -92,11 +92,11 @@ CORE4FILES=$(LWIPDIR)/core/ipv4/autoip.c \
 NETIFFILES=$(LWIPDIR)/netif/ethernet.c
 
 # LWIPFILES: All the above.
-LWIPFILES=lwip.c lwip_timer.c $(COREFILES) $(CORE4FILES) $(NETIFFILES)
+LWIPFILES=lwip.c lwip_timer.c cache.c $(COREFILES) $(CORE4FILES) $(NETIFFILES)
 LWIP_OBJS := $(LWIPFILES:.c=.o) lwip.o libsharedringbuffer/shared_ringbuffer.o utilization_socket.o udp_echo_socket.o
 
 ETH_OBJS := eth.o libsharedringbuffer/shared_ringbuffer.o
-MUX_RX_OBJS := mux_rx.o libsharedringbuffer/shared_ringbuffer.o
+MUX_RX_OBJS := mux_rx.o cache.o libsharedringbuffer/shared_ringbuffer.o
 MUX_TX_OBJS := mux_tx.o libsharedringbuffer/shared_ringbuffer.o
 COPY_OBJS := copy.o libsharedringbuffer/shared_ringbuffer.o
 BENCH_OBJS := benchmark/benchmark.o

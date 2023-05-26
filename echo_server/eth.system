@@ -54,7 +54,7 @@
         <!--<map mr="log_buffer" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="log_buffer" /> -->
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
-        <protection_domain name="eth" priority="101" pp="true" pd_id="1" budget="100" period="400">
+        <protection_domain name="eth" priority="101" pp="true" id="1" budget="100" period="400">
             <program_image path="eth.elf" />
             <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
 
@@ -77,7 +77,7 @@
             <setvar symbol="hw_ring_buffer_paddr" region_paddr="hw_ring_buffer" />
         </protection_domain>
 
-        <protection_domain name="mux_rx" priority="99" pp="true" pd_id="2">
+        <protection_domain name="mux_rx" priority="99" pp="true" id="2">
             <program_image path="mux_rx.elf" />
             <!-- shared memory for driver/mux ring buffer mechanism -->
             <map mr="rx_free_drv" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free_drv" />
@@ -96,7 +96,7 @@
             <setvar symbol="shared_dma_paddr" region_paddr="shared_dma_rx" />
         </protection_domain>
 
-        <protection_domain name="copy" priority="98" budget="20000" pd_id="4">
+        <protection_domain name="copy" priority="98" budget="20000" id="4">
             <program_image path="copy.elf" />
             <map mr="shared_dma_rx_cli" vaddr="0x2_800_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_cli" />
             <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="r" cached="true" setvar_vaddr="shared_dma_vaddr_mux" />
@@ -110,7 +110,7 @@
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
         </protection_domain>
 
-        <protection_domain name="mux_tx" priority="100" budget="20000" pd_id="3">
+        <protection_domain name="mux_tx" priority="100" budget="20000" id="3">
             <program_image path="mux_tx.elf" />
             <!-- shared memory for driver/mux ring buffer mechanism -->
             <map mr="tx_free_drv" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="tx_free_drv" />
@@ -131,7 +131,7 @@
             <setvar symbol="shared_dma_paddr_cli" region_paddr="shared_dma_tx_cli" />
         </protection_domain>
 
-        <protection_domain name="lwip" priority="97" budget="20000" pd_id="5">
+        <protection_domain name="lwip" priority="97" budget="20000" id="5">
             <program_image path="lwip.elf" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
@@ -149,7 +149,7 @@
             <map mr="cyclecounters" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
         </protection_domain>
 
-        <protection_domain name="arp" priority="98" budget="20000" pp="true" pd_id="6">
+        <protection_domain name="arp" priority="98" budget="20000" pp="true" id="6">
             <program_image path="arp.elf" />
             <!-- shared memory for arp/rx_mux ring buffer mechanism -->
             <map mr="rx_free_arp" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
@@ -164,7 +164,7 @@
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
         </protection_domain>
 
-        <protection_domain name="timer" priority="101" pp="true" pd_id="7">
+        <protection_domain name="timer" priority="101" pp="true" id="7">
             <program_image path="timer.elf" />
             <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
             <irq irq="87" id="0" /> <!-- timer interrupt -->

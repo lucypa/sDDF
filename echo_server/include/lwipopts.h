@@ -13,6 +13,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <stdbool.h>
 
 #define NO_SYS                          1
 #define LWIP_TIMERS                     1

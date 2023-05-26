@@ -50,8 +50,8 @@ get_phys_addr(uintptr_t virtual)
         offset = virtual - shared_dma_vaddr;
     }
 
-    if (offset < 0) {
-        print("get_phys_addr: offset < 0");
+    if (offset < 0 || offset >= DMA_SIZE) {
+        print("get_phys_addr: offset < 0 || offset >= dma size\n");
         return 0;
     }
 
@@ -67,7 +67,7 @@ get_virt_addr(uintptr_t phys)
     }
 
     if (offset < 0 || offset >= DMA_SIZE) {
-        print("get_phys_addr: offset < 0 || offset >= dma size");
+        print("get_phys_addr: offset < 0 || offset >= dma size\n");
         return 0;
     }
 
@@ -204,19 +204,13 @@ bool process_rx_free(void)
             void *buffer;
             int err = dequeue_free(&state.rx_ring_clients[i], &addr, &len, &buffer);
             assert(!err);
-            /*print("MUX RX| Process rx free: got vaddr: ");
-            puthex64(addr);*/
+
             int paddr = get_phys_addr(addr);
             if (!paddr) {
                 print("MUX RX|ERROR: get_phys_addr returned 0\nvirt: ");
                 puthex64(addr);
                 print("\n");
             }
-            /*print("\nMUX RX| Process rx free: got paddr: ");
-            puthex64(paddr);
-            print("\nFrom client: ");
-            puthex64(i);
-            print("\n");*/
 
             err = enqueue_free(&state.rx_ring_drv, paddr, len, buffer);
             assert(!err);

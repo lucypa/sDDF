@@ -186,6 +186,7 @@ static inline void seL4_BenchmarkTrackDumpSummary(benchmark_track_kernel_entry_t
 
 void notified(sel4cp_channel ch)
 {
+#ifdef CONFIG_ENABLE_BENCHMARKS
     switch(ch) {
         case START:
             sel4bench_reset_counters();
@@ -252,10 +253,12 @@ void notified(sel4cp_channel ch)
         default:
             print("Bench thread notified on unexpected channel\n");
     }
+#endif
 }
 
 void init(void)
 {
+#ifdef CONFIG_ENABLE_BENCHMARKS
     sel4bench_init();
     seL4_Word n_counters = sel4bench_get_num_counters();
 
@@ -277,6 +280,7 @@ void init(void)
 
     /* Notify the idle thread that the sel4bench library is initialised. */
     sel4cp_notify(INIT);
+#endif
 
 #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
     int res_buf = seL4_BenchmarkSetLogBuffer(LOG_BUFFER_CAP);
