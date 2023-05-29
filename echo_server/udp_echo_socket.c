@@ -23,11 +23,12 @@
 
 static struct udp_pcb *udp_socket;
 
+
 static void lwip_udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
     err_t error = udp_sendto(pcb, p, addr, port);
     if (error) {
-        sel4cp_dbg_puts("Failed to send UDP packet through socket\n");
+        print("Failed to send UDP packet through socket\n");
     }
     pbuf_free(p);
 }
@@ -42,6 +43,7 @@ int setup_udp_socket(void)
 
     int error = udp_bind(udp_socket, IP_ANY_TYPE, UDP_ECHO_PORT);
     if (error == ERR_OK) {
+        print("UDP echo port bound to 1235\n");
         udp_recv(udp_socket, lwip_udp_recv_callback, udp_socket);
     } else {
         print("Failed to bind the UDP socket");

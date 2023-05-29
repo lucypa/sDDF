@@ -26,11 +26,6 @@
 #define INIT   6
 #define ARP    7
 
-#define LINK_SPEED 1000000000 // Gigabit
-#define ETHER_MTU 1500
-#define NUM_BUFFERS 512
-#define BUF_SIZE 2048
-
 /* Memory regions. These all have to be here to keep compiler happy */
 uintptr_t rx_free;
 uintptr_t rx_used;
@@ -41,6 +36,7 @@ uintptr_t shared_dma_vaddr_tx;
 uintptr_t uart_base;
 
 static bool notify_tx = false;
+static bool notify_rx = false;
 
 typedef enum {
     ORIGIN_RX_QUEUE,
@@ -56,9 +52,23 @@ typedef struct ethernet_buffer {
     char origin;
     /* Index into buffer_metadata array */
     unsigned int index;
-
-    bool in_use;
 } ethernet_buffer_t;
+
+/* 
+ * LWIP mempool declare literally just initialises an array 
+ * big enough with the correct alignment 
+ */
+typedef struct lwip_custom_pbuf {
+    struct pbuf_custom custom;
+    ethernet_buffer_t *buffer;
+} lwip_custom_pbuf_t;
+
+LWIP_MEMPOOL_DECLARE(
+    RX_POOL,
+    NUM_BUFFERS * 2,
+    sizeof(lwip_custom_pbuf_t),
+    "Zero-copy RX pool"
+);
 
 typedef struct state {
     struct netif netif;
@@ -78,22 +88,16 @@ typedef struct state {
     struct pbuf *tail;
 } state_t;
 
+struct log {
+    lwip_custom_pbuf_t *pbuf_addr;
+    uintptr_t dma_addr;
+    char action[4]; // en for enqueuing, de for dequeing, 
+};
+
 state_t state;
 
-/* 
- * LWIP mempool declare literally just initialises an array 
- * big enough with the correct alignment 
- */
-typedef struct lwip_custom_pbuf {
-    struct pbuf_custom custom;
-    ethernet_buffer_t *buffer;
-} lwip_custom_pbuf_t;
-LWIP_MEMPOOL_DECLARE(
-    RX_POOL,
-    NUM_BUFFERS * 2,
-    sizeof(lwip_custom_pbuf_t),
-    "Zero-copy RX pool"
-);
+struct log logbuffer[NUM_BUFFERS * 2];
+int head = 0;
 
 static void
 dump_mac(uint8_t *mac)
@@ -108,8 +112,6 @@ dump_mac(uint8_t *mac)
     }
     putC('\n');
 }
-
-static bool notify_rx = false;
 
 static inline void return_buffer(ethernet_buffer_t *buffer)
 {
@@ -133,15 +135,13 @@ static inline void return_buffer(ethernet_buffer_t *buffer)
  */
 static void interface_free_buffer(struct pbuf *buf)
 {
-    lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) buf;
-    if (!custom_pbuf->buffer->in_use) {
+    if (!buf->in_use) {
         SYS_ARCH_DECL_PROTECT(old_level);
+        lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *)buf;
         SYS_ARCH_PROTECT(old_level);
         return_buffer(custom_pbuf->buffer);
         LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
         SYS_ARCH_UNPROTECT(old_level);
-    } else {
-        print("pbuf still in use\n");
     }
 }
 
@@ -182,7 +182,7 @@ static struct pbuf *create_interface_buffer(state_t *state, ethernet_buffer_t *b
 static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 {
     if (BUF_SIZE < length) {
-        sel4cp_dbg_puts("Requested buffer size too large.");
+        print("Requested buffer size too large.");
         return NULL;
     }
 
@@ -192,7 +192,6 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 
     int err = dequeue_free(&(state.tx_ring), &addr, &len, (void **)&buffer);
     if (err) {
-        print("LWIP|ERROR: TX free ring is empty!\n");
         return NULL;
     }
 
@@ -209,19 +208,26 @@ static inline ethernet_buffer_t *alloc_tx_buffer(size_t length)
 }
 
 void
-enqueue_pbufs(struct pbuf *chain)
+enqueue_pbufs(struct pbuf *buff)
 {
     if (state.head == NULL) {
-        state.head = chain;
+        state.head = buff;
     } else {
-        state.tail->next = chain;
+        state.tail->next_chain = buff;
     }
     
     // move the tail pointer to the new tail.
-    struct pbuf *curr = chain;
-    while (curr->next != NULL) {
-        curr = curr->next;
+    struct pbuf *curr = buff;
+    // we need to reference the pbuf so it
+    // doesn't get freed (as we are only responsible
+    // for freeing pbufs allocated by us - lwip also
+    // allocates it's own. )
+    while (curr->next_chain != NULL) {
+        curr->in_use = true;
+        pbuf_ref(curr);
+        curr = curr->next_chain;
     }
+
     state.tail = curr; 
 }
 
@@ -230,85 +236,83 @@ enqueue_pbufs(struct pbuf *chain)
 static err_t
 lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
-    int err;
-    /* pbufs are a linked list. We can copy one at a time
-    until we run out of transmit buffers, then the remaining bufs
-    need to wait until we get the notification that more are available */
-    for (struct pbuf *curr = p; curr != NULL; curr = curr->next) {
-        ethernet_buffer_t *buffer = alloc_tx_buffer(curr->len);
-        if (buffer == NULL) {
-            // Put in a queue to process later!
-            print("Ran out of tx buffers\n");
-            if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
-                // mark as used so it doesn't get freed.
-                lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
-                pc->buffer->in_use = true;
-                enqueue_pbufs(curr);
-                break;
-            } else {
-                // if we couldn't allocate a transmit buffer for an
-                // lwip allocated pbuf 
-                // (eg a dhcp message) then we won't save the buffer
-                // as we are not responsible for freeing it.
-                return ERR_MEM;
-            }
-        }
+    /* Grab an free TX buffer, copy pbuf data over,
+    add to used tx ring, notify server */
+    err_t ret = ERR_OK;
 
-        // copy the buffer into a transmit buf. 
-        memcpy(buffer->buffer, curr->payload, curr->len);
-
-        // mark the old payload as no longer in use (so it gets properly freed) if it's
-        // origin is an RX buf.
-        if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
-            lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
-            pc->buffer->in_use = false;
-        }
-        
-        // cleanCache((uintptr_t)frame, (uintptr_t)frame + copied);
-        err = seL4_ARM_VSpace_Clean_Data(3, buffer->buffer, buffer->buffer + curr->len);
-        if (err) {
-            print("LWIP|ERROR: ARM VSpace clean failed: ");
-            puthex64(err);
-            print("\n");
-        }
-
-        /* insert into the used tx queue */
-        err = enqueue_used(&(state.tx_ring), buffer->buffer, curr->len, buffer);
-        if (err) {
-            print("LWIP|ERROR: TX used ring full\n");
-            return ERR_MEM;
-        }
-
-        /* Notify the server for next time we recv() */
-        notify_tx = true;
+    if (p->tot_len > BUF_SIZE) {
+        print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
+        return ERR_MEM;
     }
 
-    return ERR_OK;
+    ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
+    if (buffer == NULL) {
+        enqueue_pbufs(p);
+        return ERR_OK;
+    }
+
+    unsigned char *frame = (unsigned char *)buffer->buffer;
+    /* Copy all buffers that need to be copied */
+    unsigned int copied = 0;
+    for (struct pbuf *curr = p; curr != NULL; curr = curr->next) {
+        // this ensures the pbufs get freed properly. 
+        curr->in_use = false;
+        unsigned char *buffer_dest = &frame[copied];
+        if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
+            /* Don't copy memory back into the same location */
+            memcpy(buffer_dest, curr->payload, curr->len);
+        }
+        copied += curr->len;
+    }
+
+    int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
+    if (err) {
+        print("LWIP|ERROR: ARM VSpace clean failed: ");
+        puthex64(err);
+        print("\n");
+    }
+
+    /* insert into the used tx queue */
+    err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, buffer);
+    if (err) {
+        print("LWIP|ERROR: TX used ring full\n");
+        err = enqueue_free(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, buffer);
+        assert(!err);
+        return ERR_MEM;
+    }
+
+    /* Notify the server for next time we recv() */
+    notify_tx = true;
+    return ret;
 }
 
 void
 process_tx_queue(void)
 {
     int err;
-    struct pbuf *curr = state.head;
+    struct pbuf *current = state.head;
     struct pbuf *temp;
-    while(curr != NULL) {
-        ethernet_buffer_t *buffer = alloc_tx_buffer(curr->len);
+    while(current != NULL && !ring_empty(state.tx_ring.free_ring)) {
+        ethernet_buffer_t *buffer = alloc_tx_buffer(current->tot_len);
         if (buffer == NULL) {
             break;
         }
 
-        // copy the buffer into a transmit buf. 
-        err = memcpy(buffer->buffer, curr->payload, curr->len);
-
-        // mark the old payload as no longer in use (so it gets properly freed) if it's
-        // origin is an RX buf. As we only save the custom pbufs, this should always be true. 
-        if ((curr->flags & PBUF_FLAG_IS_CUSTOM) != 0) {
-            lwip_custom_pbuf_t *pc = (lwip_custom_pbuf_t *)curr;
-            pc->buffer->in_use = false;
+        unsigned char *frame = (unsigned char *)buffer->buffer;
+        /* Copy all buffers that need to be copied */
+        unsigned int copied = 0;
+        for (struct pbuf *curr = current; curr != NULL; curr = curr->next) {
+            // this ensures the pbufs get freed properly. 
+            curr->in_use = false;
+            unsigned char *buffer_dest = &frame[copied];
+            if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
+                /* Don't copy memory back into the same location */
+                memcpy(buffer_dest, curr->payload, curr->len);
+            }
+            copied += curr->len;
         }
 
-        err = seL4_ARM_VSpace_Clean_Data(3, buffer->buffer, buffer->buffer + curr->len);
+        err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
         if (err) {
             print("LWIP|ERROR: ARM VSpace clean failed: ");
             puthex64(err);
@@ -316,7 +320,7 @@ process_tx_queue(void)
         }
 
         /* insert into the used tx queue */
-        err = enqueue_used(&(state.tx_ring), buffer->buffer, curr->len, buffer);
+        err = enqueue_used(&(state.tx_ring), frame, copied, buffer);
         if (err) {
             print("LWIP|ERROR: TX used ring full\n");
             break;
@@ -325,14 +329,14 @@ process_tx_queue(void)
         /* Notify the server for next time we recv() */
         notify_tx = true;
 
-        /* Free the the pbuf. */
-        temp = curr;
-        curr = curr->next;
+        /* free the pbufs. */
+        temp = current;
+        current = current->next_chain;
         pbuf_free(temp);
     }
 
     // if curr != NULL, we need to make sure we don't lose it and can come back
-    state.head = curr;
+    state.head = current;
 }
 
 void
@@ -423,6 +427,18 @@ static void get_mac(void)
     state.mac[5] = paur >> 16 & 0xff;*/
 }
 
+void dump_log(void)
+{
+    for (int i = 0; i < NUM_BUFFERS * 2; i++) {
+        print(logbuffer[i].action);
+        print(",");
+        puthex64(logbuffer[i].pbuf_addr);
+        print(",");
+        puthex64(logbuffer[i].dma_addr);
+        print("\n");
+    }
+}
+
 void init_post(void)
 {
     dump_mac(state.mac);
@@ -459,7 +475,6 @@ void init(void)
             .size = BUF_SIZE,
             .origin = ORIGIN_RX_QUEUE,
             .index = i,
-            .in_use = false,
         };
         int err = enqueue_free(&state.rx_ring, buffer->buffer, BUF_SIZE, buffer);
         assert(!err);
@@ -472,7 +487,6 @@ void init(void)
             .size = BUF_SIZE,
             .origin = ORIGIN_TX_QUEUE,
             .index = i + NUM_BUFFERS,
-            .in_use = false,
         };
 
         int err = enqueue_free(&state.tx_ring, buffer->buffer, BUF_SIZE, buffer);

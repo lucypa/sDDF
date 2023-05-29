@@ -570,6 +570,7 @@ void notified(sel4cp_channel ch)
             if (initialised) {
                 fill_rx_bufs();
             } else {
+                print("Eth init post\n");
                 init_post();
                 initialised = true;
             }

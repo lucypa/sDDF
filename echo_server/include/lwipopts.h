@@ -49,6 +49,15 @@
 /* Set this to 0 for performance */
 #define LWIP_STATS 0
 
+/* So we can mark a pbuf as in use or not if we need to enqueue for later */
+#define LWIP_PBUF_CUSTOM_DATA \
+    bool in_use; \
+    struct pbuf *next_chain;
+
+#define LWIP_PBUF_INIT_CUSTOM_DATA(p) \
+    (p)->in_use = false; \
+    (p)->next_chain = NULL;
+
 /* Debugging options */
 //#define LWIP_DEBUG
 /* Change this to LWIP_DBG_LEVEL_ALL to see a trace 
