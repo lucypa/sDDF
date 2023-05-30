@@ -62,12 +62,11 @@ typedef uintptr_t mem_ptr_t;
 /* Plaform specific diagnostic output */
 #define LWIP_PLATFORM_DIAG(x)           \
         do {                            \
-            print("lwIP error\n");         \
+            print("lwIP error\n");      \
         } while(0)
 
-#define LWIP_PLATFORM_ASSERT(x)                                 \
+#define LWIP_PLATFORM_ASSERT(x) \
         do {                                                    \
-            print("Assertion failed\n");               \
+            _assert_fail(x, __FILE__, __LINE__, __FUNCTION__);  \
             while(1);                                           \
         } while(0)
-

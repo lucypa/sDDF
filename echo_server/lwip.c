@@ -217,18 +217,18 @@ enqueue_pbufs(struct pbuf *buff)
     }
     
     // move the tail pointer to the new tail.
-    struct pbuf *curr = buff;
-    // we need to reference the pbuf so it
-    // doesn't get freed (as we are only responsible
+    state.tail = buff;
+
+    // we need to reference the pbufs so they
+    // don't get freed (as we are only responsible
     // for freeing pbufs allocated by us - lwip also
     // allocates it's own. )
-    while (curr->next_chain != NULL) {
+    struct pbuf *curr = buff;
+    while (curr != NULL) {
         curr->in_use = true;
         pbuf_ref(curr);
-        curr = curr->next_chain;
+        curr = curr->next;
     }
-
-    state.tail = curr; 
 }
 
 /* Grab an free TX buffer, copy pbuf data over,
