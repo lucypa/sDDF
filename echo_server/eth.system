@@ -45,6 +45,7 @@
 
         <!--<irq irq="152" id="1" /> <!- ethernet interrupt -->
         <irq irq="40" id="1" /> <!-- ethernet interrupt -->
+        <irq irq="96" id="0" />
 
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 

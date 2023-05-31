@@ -7,6 +7,7 @@
 #include <sel4cp.h>
 #include <sel4/sel4.h>
 #include <sel4/benchmark_track_types.h>
+#include <sel4/benchmark_utilisation_types.h>
 #include "sel4bench.h"
 #include "fence.h"
 #include "bench.h"
@@ -136,12 +137,16 @@ static inline void seL4_BenchmarkTrackDumpSummary(benchmark_track_kernel_entry_t
 
 void notified(sel4cp_channel ch) 
 {
+    uint64_t total;
+    uint64_t kernel;
+    uint64_t entries;
+    uint64_t idle;
     switch(ch) {
         case START:
-            sel4bench_reset_counters();
+            /*sel4bench_reset_counters();
             THREAD_MEMORY_RELEASE();
             inst->instr_idle_count = 0;
-            inst->instr_overflows = 0;
+            inst->instr_overflows = 0;*/
 
             sel4bench_start_counters(benchmark_bf);
 
@@ -155,18 +160,14 @@ void notified(sel4cp_channel ch)
 
             break;
         case STOP:
-            sel4bench_get_counters(benchmark_bf, &counter_values[0]);
-            sel4bench_stop_counters(benchmark_bf);
+            /*sel4bench_get_counters(benchmark_bf, &counter_values[0]);
+            sel4bench_stop_counters(benchmark_bf);*/
 
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
-            uint64_t total;
-            uint64_t kernel;
-            uint64_t entries;
-            uint64_t idle;
+#ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             /* Dump the counters */
             print("{\n");
-            for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
+            /*for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
                 print(counter_names[i]);
                 print(": ");
                 if (i == 4) {
@@ -176,7 +177,7 @@ void notified(sel4cp_channel ch)
                     puthex64(counter_values[i]);
                 }
                 print("\n");
-            }
+            }*/
 
             print("KernelUtilisation");
             print(": ");
@@ -187,15 +188,15 @@ void notified(sel4cp_channel ch)
             puthex64(entries);
             print("\n");
             print("}\n");
-            #endif
+#endif
 
-            #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
+#ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
             entries = seL4_BenchmarkFinalizeLog();
             print("KernelEntries");
             print(": ");
             puthex64(entries);
             seL4_BenchmarkTrackDumpSummary(log_buffer, entries);
-            #endif
+#endif
 
             break;
         default:
@@ -205,7 +206,8 @@ void notified(sel4cp_channel ch)
 
 void init(void)
 {
-    sel4bench_init();
+    print("Benchmark.c init\n");
+    /*sel4bench_init();
     seL4_Word n_counters = sel4bench_get_num_counters();
     int n_chunks = DIV_ROUND_UP(ARRAY_SIZE(benchmarking_events), n_counters);
 
@@ -224,7 +226,7 @@ void init(void)
     sel4bench_reset_counters();
     sel4bench_start_counters(mask);
 
-    benchmark_bf = mask;
+    benchmark_bf = mask;*/
 
     /* Notify the idle thread that the sel4bench library is initialised. */
     sel4cp_notify(INIT);

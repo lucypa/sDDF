@@ -37,7 +37,7 @@ BOARD_DIR := $(SEL4CP_SDK)/board/$(SEL4CP_BOARD)/$(SEL4CP_CONFIG)
 
 IMAGES := eth.elf lwip.elf benchmark.elf idle.elf
 CFLAGS := -mcpu=$(CPU) -mstrict-align -ffreestanding -g3 -O3 -Wall  -Wno-unused-function
-LDFLAGS := -L$(BOARD_DIR)/lib
+LDFLAGS := -L$(BOARD_DIR)/lib -L.
 LIBS := -lsel4cp -Tsel4cp.ld -lc
 
 IMAGE_FILE = $(BUILD_DIR)/loader.img
@@ -49,7 +49,9 @@ CFLAGS += -I$(BOARD_DIR)/include \
 	-I$(LWIPDIR)/include \
 	-I$(LWIPDIR)/include/ipv4 \
 	-I$(RINGBUFFERDIR)/include \
-	-I$(BENCHDIR)/include 
+	-I$(BENCHDIR)/include \
+	-MD \
+	-MP
 
 # COREFILES, CORE4FILES: The minimum set of files needed for lwIP.
 COREFILES=$(LWIPDIR)/core/init.c \
@@ -91,12 +93,18 @@ LWIP_OBJS := $(LWIPFILES:.c=.o) lwip.o libsharedringbuffer/shared_ringbuffer.o u
 ETH_OBJS := odroidc2.o libsharedringbuffer/shared_ringbuffer.o
 BENCH_OBJS := benchmark/benchmark.o
 IDLE_OBJS := benchmark/idle.o
-CONSOLE_OBJS := console.o
 
-all: directories $(IMAGE_FILE)
+OBJS := $(sort $(addprefix $(BUILD_DIR)/, $(ETH_OBJS) $(MUX_RX_OBJS) $(MUX_TX_OBJS)\
+	$(COPY_OBJS) $(BENCH_OBJS) $(IDLE_OBJS) \
+	$(LWIP_OBJS) $(ARP_OBJS) $(TIMER_OBJS)))
+DEPS := $(OBJS:.o=.d)
 
-$(BUILD_DIR)/%.o: %.c Makefile
-	$(CC) -c $(CFLAGS) $< -o $@
+all: $(IMAGE_FILE)
+-include $(DEPS)
+
+$(BUILD_DIR)/%.d $(BUILD_DIR)/%.o: %.c Makefile
+	mkdir -p `dirname $(BUILD_DIR)/$*.o`
+	$(CC) -c $(CFLAGS) $< -o $(BUILD_DIR)/$*.o
 
 $(BUILD_DIR)/%.o: %.s Makefile
 	$(AS) -g3 -mcpu=$(CPU) $< -o $@
@@ -113,34 +121,15 @@ $(BUILD_DIR)/benchmark.elf: $(addprefix $(BUILD_DIR)/, $(BENCH_OBJS))
 $(BUILD_DIR)/idle.elf: $(addprefix $(BUILD_DIR)/, $(IDLE_OBJS))
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
-$(BUILD_DIR)/console.elf: $(addprefix $(BUILD_DIR)/, $(CONSOLE_OBJS))
-	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@	
 
 $(IMAGE_FILE) $(REPORT_FILE): $(addprefix $(BUILD_DIR)/, $(IMAGES)) eth.system
 	$(SEL4CP_TOOL) eth.system --search-path $(BUILD_DIR) --board $(SEL4CP_BOARD) --config $(SEL4CP_CONFIG) -o $(IMAGE_FILE) -r $(REPORT_FILE)
 
-.PHONY: all depend compile clean
+.PHONY: all compile clean
 
 %.o:
 	$(CC) $(CFLAGS) -c $(@:.o=.c) -o $@
 
-#Make the Directories
-directories:
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src))	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/core)) 	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/core/ipv4)) 	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/lwip/src/netif))	\
-    $(info $(shell mkdir -p $(BUILD_DIR)/libsharedringbuffer))	\
-	$(info $(shell mkdir -p $(BUILD_DIR)/benchmark))	\
-
 clean:
 	rm -f *.o *.elf .depend*
 	find . -name \*.o |xargs --no-run-if-empty rm
-
-depend dep: .depend
-
-include .depend
-
-.depend: $(LWIPFILES)
-	$(CC) $(CFLAGS) -MM $^ > .depend || rm -f .depend
-	

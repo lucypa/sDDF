@@ -11,6 +11,7 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 
+#define IRQ_2  0
 #define IRQ_CH 1
 #define TX_CH  2
 #define RX_CH  2
@@ -454,7 +455,7 @@ eth_setup(void)
     eth_dma->busmode |= FIXEDBURST | PRIORXTX_41 | DMA_PBL;
     eth_dma->opmode |= FLUSHTXFIFO | STOREFORWARD;
 
-    eth_mac->conf |= FRAMEBURSTENABLE | (~MII_PORTSELECT) | FULLDPLXMODE | DISABLERXOWN;
+    eth_mac->conf |= FRAMEBURSTENABLE | DISABLERXOWN | FULLDPLXMODE;
 
     eth_dma->rxdesclistaddr = hw_ring_buffer_paddr;
     eth_dma->txdesclistaddr = hw_ring_buffer_paddr + (sizeof(struct descriptor) * RX_COUNT);
@@ -477,8 +478,8 @@ void init_post()
     eth_mac->conf |= RXENABLE | TXENABLE;
     eth_dma->opmode |= TXSTART | RXSTART;
 
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": init complete -- waiting for interrupt\n");
+    print(sel4cp_name);
+    print(": init complete -- waiting for interrupt\n");
     sel4cp_notify(INIT);
 
     /* Now take away our scheduling context. Uncomment this for a passive driver. */
@@ -491,8 +492,8 @@ void init_post()
 
 void init(void)
 {
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     eth_setup();
 
@@ -523,12 +524,16 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case IRQ_CH:
-            sel4cp_dbg_puts("IRQ!\n");
             handle_eth(eth_dma);
             have_signal = true;
             signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
             signal = (BASE_IRQ_CAP + IRQ_CH);
             return;
+        case IRQ_2:
+            handle_eth(eth_dma);
+            have_signal = true;
+            signal_msg = seL4_MessageInfo_new(IRQAckIRQ, 0, 0, 0);
+            signal = (BASE_IRQ_CAP + IRQ_CH);
         case INIT:
             init_post();
             break;

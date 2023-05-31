@@ -176,8 +176,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
         return ERR_MEM;
     }
 
-    print("lwip_eth_send\n");
-
     state_t *state = (state_t *)netif->state;
 
     ethernet_buffer_t *buffer = alloc_tx_buffer(state, p->tot_len);
@@ -223,7 +221,6 @@ static err_t lwip_eth_send(struct netif *netif, struct pbuf *p)
 void process_rx_queue(void) 
 {
     while(!ring_empty(state.rx_ring.used_ring)) {
-        print("process_rx_queue\n");
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -322,14 +319,14 @@ void init_post(void)
     setup_udp_socket();
     setup_utilization_socket();
 
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": init complete -- waiting for notification\n");
+    print(sel4cp_name);
+    print(": init complete -- waiting for notification\n");
 }
 
 void init(void)
 {
-    sel4cp_dbg_puts(sel4cp_name);
-    sel4cp_dbg_puts(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     /* Set up shared memory regions */
     ring_init(&state.rx_ring, (ring_buffer_t *)rx_avail, (ring_buffer_t *)rx_used, NULL, 1);
@@ -400,7 +397,6 @@ void notified(sel4cp_channel ch)
             return;
         case IRQ:
             /* Timer */
-            print("Timer!");
             irq(ch);
             sel4cp_irq_ack(ch);
             return;
