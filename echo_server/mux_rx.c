@@ -6,7 +6,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 #include "lwip/ip_addr.h"
-#include "netif/etharp.h"
 
 uintptr_t rx_free_drv;
 uintptr_t rx_used_drv;
@@ -108,15 +107,14 @@ int get_client(uintptr_t dma_vaddr) {
     dest_addr[4] = ethhdr->dest.addr[4];
     dest_addr[5] = ethhdr->dest.addr[5];
 
+    if (compare_mac(dest_addr, broadcast) == 0) {
+        // broadcast packet, send the packet to ARP component
+        return ARP;
+    }
+
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (compare_mac(dest_addr, state.mac_addrs[client]) == 0) {
             return client;
-        }
-        if (compare_mac(dest_addr, broadcast) == 0) {
-            // broadcast packet, send the packet to the first client to handle.
-            // This is temporary, eventually we will have a different
-            // component to deal with this.
-            return ARP;
         }
     }
 
@@ -171,7 +169,8 @@ void process_rx_complete(void)
                 notify_clients[client] = 1;
             }
         } else {
-            // no match, not for us, return the buffer to the driver.
+            // either the packet is not for us, or the client queue is full.
+            // return the buffer to the driver.
             err = enqueue_free(&state.rx_ring_drv, addr, len, cookie);
             if (err) {
                 print("MUX RX|ERROR: Failed to enqueue free to driver RX ring\n");
@@ -289,7 +288,7 @@ void init(void)
     state.mac_addrs[0][4] = 0;
     state.mac_addrs[0][5] = 0;
 
-    // This is the legitimate hw address
+    // This is the legitimate hw address for imx8mm
     // (can be useful when debugging). 
     /*state.mac_addrs[0][0] = 0;
     state.mac_addrs[0][1] = 0x4;
