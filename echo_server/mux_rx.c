@@ -6,6 +6,7 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 #include "lwip/ip_addr.h"
+#include "netif/etharp.h"
 
 uintptr_t rx_free_drv;
 uintptr_t rx_used_drv;
@@ -126,7 +127,7 @@ int get_client(uintptr_t dma_vaddr) {
  */
 void process_rx_complete(void)
 {
-    int notify_clients[NUM_CLIENTS] = {0};
+    bool notify_clients[NUM_CLIENTS] = {false};
 
     /* To avoid notifying the driver twice, used this global variable to 
         determine whether we need to notify the driver in 
@@ -166,7 +167,7 @@ void process_rx_complete(void)
             }
 
             if (was_empty) {
-                notify_clients[client] = 1;
+                notify_clients[client] = true;
             }
         } else {
             // either the packet is not for us, or the client queue is full.
@@ -197,7 +198,7 @@ bool process_rx_free(void)
     uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
     uint64_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].free_ring)) {
+        while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *buffer;

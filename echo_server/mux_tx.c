@@ -31,39 +31,35 @@ state_t state;
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
 {
-    uint64_t offset;
+    int offset;
+    uintptr_t base;
     if (virtual >= shared_dma_vaddr_cli && virtual < shared_dma_vaddr_cli + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_cli;
-        if (offset < 0) {
-            print("get_phys_addr: offset < 0\n");
-            return 0;
-        }
-        return shared_dma_paddr_cli + offset;
-    } else {
+        base = shared_dma_paddr_cli;
+    } else if (virtual >= shared_dma_vaddr_arp && virtual < shared_dma_vaddr_arp + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_arp;
-        if (offset < 0 || offset > DMA_SIZE) {
-            print("get_phys_addr: offset < 0 || offset > DMA_SIZE\n");
-            return 0;
-        }
-        return shared_dma_paddr_arp + offset;
+        base = shared_dma_paddr_arp;
+    } else {
+        print("MUX TX|ERROR: get_phys_addr: invalid virtual address\n");
+        return 0;
     }
+
+    return base + offset;
 }
 
 static uintptr_t
 get_virt_addr(uintptr_t phys)
 {
-    uint64_t offset;
+    int offset;
     uintptr_t base; 
     if (phys >= shared_dma_paddr_cli && phys < shared_dma_paddr_cli + DMA_SIZE) {
         offset = phys - shared_dma_paddr_cli;
         base = shared_dma_vaddr_cli;
-    } else {
+    } else if (phys >= shared_dma_paddr_arp && phys < shared_dma_paddr_arp + DMA_SIZE) {
         offset = phys - shared_dma_paddr_arp;
         base = shared_dma_vaddr_arp;
-    }
-
-    if (offset < 0 || offset >= DMA_SIZE) {
-        print("get_virt_addr: offset < 0 || offset > DMA_SIZE\n");
+    } else {
+        print("MUX TX|ERROR: get_virt_addr: invalid physical address\n");
         return 0;
     }
 
@@ -115,15 +111,14 @@ void process_tx_ready(void)
 
 /*
  * Take as many TX free buffers from the driver and give them to
- * the client. This will notify the client if we have moved buffers
- * around and the client's TX free ring was already empty.
+ * the respective clients. This will notify the clients if we have moved buffers
+ * around and the client's TX free ring was empty.
  */
-// TODO: Use the address range to determine which client
-// this buffer originated from to return it to the correct one. 
 void process_tx_complete(void)
 {
-    bool was_empty = ring_empty(state.tx_ring_clients[0].free_ring);
-    bool enqueued = false;
+    // bitmap stores whether which clients need notifying.
+    bool notify_clients[NUM_CLIENTS] = {false};
+
     while (!ring_empty(state.tx_ring_drv.free_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -133,13 +128,22 @@ void process_tx_complete(void)
         uintptr_t virt = get_virt_addr(addr);
         assert(virt);
 
-        err = enqueue_free(&state.tx_ring_clients[get_client(virt)], virt, len, cookie);
+        int client = get_client(virt);
+        int was_empty = ring_empty(state.tx_ring_clients[client].free_ring);
+
+        err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
         assert(!err);
-        enqueued = true;
+
+        if (was_empty) {
+            notify_clients[client] = true;
+        }
     }
 
-    if (enqueued && was_empty) {
-        sel4cp_notify(CLIENT_CH);
+    /* Loop over bitmap and see who we need to notify. */
+    for (int client = 0; client < NUM_CLIENTS; client++) {
+        if (notify_clients[client]) {
+            sel4cp_notify(client);
+        }
     }
 }
 
