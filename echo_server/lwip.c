@@ -23,7 +23,6 @@
 #define TIMER  1
 #define RX_CH  2
 #define TX_CH  3
-#define INIT   6
 #define ARP    7
 
 /* Memory regions. These all have to be here to keep compiler happy */
@@ -95,14 +94,15 @@ struct log {
 };
 
 state_t state;
-
+bool initialised = false;
 struct log logbuffer[NUM_BUFFERS * 2];
 int head = 0;
 
 static void
 dump_mac(uint8_t *mac)
 {
-    print("Lwip MAC: ");
+    print(sel4cp_name);
+    print(": ");
     for (unsigned i = 0; i < 6; i++) {
         put8((mac[i] >> 4) & 0xf);
         put8(mac[i] & 0xf);
@@ -245,6 +245,11 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         return ERR_MEM;
     }
 
+    if (ring_full(state.tx_ring.used_ring)) {
+        enqueue_pbufs(p);
+        return ERR_OK;
+    }
+
     ethernet_buffer_t *buffer = alloc_tx_buffer(p->tot_len);
     if (buffer == NULL) {
         enqueue_pbufs(p);
@@ -292,7 +297,7 @@ process_tx_queue(void)
     int err;
     struct pbuf *current = state.head;
     struct pbuf *temp;
-    while(current != NULL && !ring_empty(state.tx_ring.free_ring)) {
+    while(current != NULL && !ring_empty(state.tx_ring.free_ring) && !ring_full(state.tx_ring.used_ring)) {
         ethernet_buffer_t *buffer = alloc_tx_buffer(current->tot_len);
         if (buffer == NULL) {
             break;
@@ -342,7 +347,7 @@ process_tx_queue(void)
 void
 process_rx_queue(void)
 {
-    while (!ring_empty(state.rx_ring.used_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;
@@ -415,7 +420,11 @@ static void get_mac(void)
     state.mac[2] = 0x1;
     state.mac[3] = 0;
     state.mac[4] = 0;
-    state.mac[5] = 0;
+    if (!strcmp(sel4cp_name, "client0")) {
+        state.mac[5] = 0;
+    } else {
+        state.mac[5] = 0x1;
+    }
     /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
@@ -524,10 +533,11 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case RX_CH:
+            if (!initialised) {
+                init_post();
+                initialised = true;
+            }
             process_rx_queue();
-            break;
-        case INIT:
-            init_post();
             break;
         case TIMER:
             // check timeouts.

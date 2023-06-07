@@ -7,7 +7,7 @@
 #define TX_CH 1
 #define REG_IP 0
 #define CLIENT_CH_START 2
-#define NUM_CLIENTS 1
+#define NUM_CLIENTS 2
 #define ETH_HWADDR_LEN 6
 #define IPV4_PROTO_LEN 4
 #define PADDING_SIZE 10
@@ -271,6 +271,13 @@ init(void)
     mac_addrs[0][3] = 0;
     mac_addrs[0][4] = 0;
     mac_addrs[0][5] = 0;
+
+    mac_addrs[1][0] = 0x52;
+    mac_addrs[1][1] = 0x54;
+    mac_addrs[1][2] = 0x1;
+    mac_addrs[1][3] = 0;
+    mac_addrs[1][4] = 0;
+    mac_addrs[1][5] = 1;
 
     return;
 }

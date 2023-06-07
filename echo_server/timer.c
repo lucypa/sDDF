@@ -29,7 +29,9 @@
 #define ICR2 8
 #define CNT 9
 
-#define MAX_TIMEOUTS 2
+#define MAX_TIMEOUTS 3
+
+#define IRQ_CH 0
 
 uintptr_t gpt_regs;
 static volatile uint32_t *gpt;
@@ -103,9 +105,32 @@ irq(sel4cp_channel ch)
 void
 notified(sel4cp_channel ch)
 {
-    // we have one job
-    irq(ch);
-    sel4cp_irq_ack_delayed(ch);
+    uint64_t rel_timeout, cur_ticks, abs_timeout;
+    if (ch == IRQ_CH) {
+        irq(ch);
+        sel4cp_irq_ack_delayed(ch);
+    } /*else if (ch == MUX_TX) {
+        // set a timeout of x 
+        rel_timeout = 108; // this should limit a 1500 byte packet to max 100 Mbps
+        cur_ticks = get_ticks();
+        abs_timeout = cur_ticks + rel_timeout;
+
+        timeouts[ch] = abs_timeout;
+        if ((!timeout_active || abs_timeout < current_timeout)
+            && (cur_ticks >> 32 == abs_timeout >> 32)) {
+            if (timeout_active) {
+                // there current timeout is now treated as pending 
+                pending_timeouts++;
+            }
+            gpt[OCR1] = abs_timeout;
+            gpt[IR] |= 1;
+            timeout_active = true;
+            current_timeout = abs_timeout;
+            active_channel = ch;
+        } else {
+            pending_timeouts++;
+        }
+    }*/
 }
 
 seL4_MessageInfo_t

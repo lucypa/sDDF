@@ -14,7 +14,6 @@
 #define IRQ_CH 0
 #define TX_CH  1
 #define RX_CH  2
-#define INIT   3
 
 #define MDC_FREQ    20000000UL
 
@@ -516,7 +515,6 @@ void init_post()
     fill_rx_bufs();
     print(sel4cp_name);
     print(": init complete -- waiting for interrupt\n");
-    sel4cp_notify(INIT);
 
     /* Now take away our scheduling context. Uncomment this for a passive driver. */
     /* have_signal = true;
@@ -539,11 +537,6 @@ seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
     switch (ch) {
-        case INIT:
-            // return the MAC address.
-            sel4cp_mr_set(0, eth->palr);
-            sel4cp_mr_set(1, eth->paur);
-            return sel4cp_msginfo_new(0, 2);
         case TX_CH:
             handle_tx(eth);
             break;
@@ -570,7 +563,6 @@ void notified(sel4cp_channel ch)
             if (initialised) {
                 fill_rx_bufs();
             } else {
-                print("Eth init post\n");
                 init_post();
                 initialised = true;
             }

@@ -11,9 +11,10 @@
 uintptr_t rx_free_drv;
 uintptr_t rx_used_drv;
 
-uintptr_t rx_free_cli;
-uintptr_t rx_used_cli;
-
+uintptr_t rx_free_cli0;
+uintptr_t rx_used_cli0;
+uintptr_t rx_free_cli1;
+uintptr_t rx_used_cli1;
 uintptr_t rx_free_arp;
 uintptr_t rx_used_arp;
 
@@ -21,13 +22,14 @@ uintptr_t shared_dma_vaddr;
 uintptr_t shared_dma_paddr;
 uintptr_t uart_base;
 
-#define NUM_CLIENTS 2
+#define NUM_CLIENTS 3
 #define DMA_SIZE 0x200000
-#define COPY_CH 0
-#define DRIVER_CH 2
-#define ARP 1
+#define DRIVER_CH 3
 
 #define ETHER_MTU 1500
+
+#define BUF_SIZE 2048
+#define NUM_BUFFERS 512
 
 typedef struct state {
     /* Pointers to shared buffers */
@@ -37,8 +39,6 @@ typedef struct state {
 } state_t;
 
 state_t state;
-int initialised = 0;
-uint8_t broadcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint64_t dropped = 0;
 bool rx_free_was_empty = false;
 
@@ -78,13 +78,13 @@ static void
 dump_mac(uint8_t *mac)
 {
     for (unsigned i = 0; i < 6; i++) {
-        sel4cp_dbg_putc(hexchar((mac[i] >> 4) & 0xf));
-        sel4cp_dbg_putc(hexchar(mac[i] & 0xf));
+        putC(hexchar((mac[i] >> 4) & 0xf));
+        putC(hexchar(mac[i] & 0xf));
         if (i < 5) {
-            sel4cp_dbg_putc(':');
+            putC(':');
         }
     }
-    sel4cp_dbg_putc('\n');
+    putC('\n');
 }
 
 int compare_mac(uint8_t *mac1, uint8_t *mac2)
@@ -99,26 +99,20 @@ int compare_mac(uint8_t *mac1, uint8_t *mac2)
 
 /* Return the client ID if the Mac address is a match. */
 int get_client(uintptr_t dma_vaddr) {
-    uint8_t dest_addr[6];
     struct eth_hdr *ethhdr = (struct eth_hdr *)dma_vaddr;
-    dest_addr[0] = ethhdr->dest.addr[0];
-    dest_addr[1] = ethhdr->dest.addr[1];
-    dest_addr[2] = ethhdr->dest.addr[2];
-    dest_addr[3] = ethhdr->dest.addr[3];
-    dest_addr[4] = ethhdr->dest.addr[4];
-    dest_addr[5] = ethhdr->dest.addr[5];
-
-    if (compare_mac(dest_addr, broadcast) == 0) {
-        // broadcast packet, send the packet to ARP component
-        return ARP;
-    }
-
     for (int client = 0; client < NUM_CLIENTS; client++) {
-        if (compare_mac(dest_addr, state.mac_addrs[client]) == 0) {
+        if (compare_mac(ethhdr->dest.addr, state.mac_addrs[client]) == 0) {
             return client;
         }
     }
 
+    print("Mux rx did not find client with MAC: ");
+    dump_mac(ethhdr->dest.addr);
+    print("From MAC: ");
+    dump_mac(ethhdr->src.addr);
+    print("Type: ");
+    puthex64(ethhdr->type);
+    putC('\n');
     return -1;
 }
 
@@ -259,29 +253,13 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 
 void notified(sel4cp_channel ch)
 {
-    if (!initialised) {
-        process_rx_free();
-        print("Mux rx init complete\n");
-        sel4cp_notify(DRIVER_CH);
-        initialised = 1;
-        return;
-    }
-
-    if (ch == COPY_CH || ch == DRIVER_CH) {
-        process_rx_complete();
-        process_rx_free();
-    } else {
-        print("MUX RX|ERROR: unexpected notification from channel: ");
-        puthex64(ch);
-        print("\n");
-        assert(0);
-    }
+    process_rx_complete();
+    process_rx_free();
 }
 
 void init(void)
 {
-    // set up client macs
-    // use a dummy one for our one client. 
+    // set up client macs 
     state.mac_addrs[0][0] = 0x52;
     state.mac_addrs[0][1] = 0x54;
     state.mac_addrs[0][2] = 0x1;
@@ -289,6 +267,20 @@ void init(void)
     state.mac_addrs[0][4] = 0;
     state.mac_addrs[0][5] = 0;
 
+    state.mac_addrs[1][0] = 0x52;
+    state.mac_addrs[1][1] = 0x54;
+    state.mac_addrs[1][2] = 0x1;
+    state.mac_addrs[1][3] = 0;
+    state.mac_addrs[1][4] = 0;
+    state.mac_addrs[1][5] = 0x1;
+
+    // and for broadcast. 
+    state.mac_addrs[2][0] = 0xff;
+    state.mac_addrs[2][1] = 0xff;
+    state.mac_addrs[2][2] = 0xff;
+    state.mac_addrs[2][3] = 0xff;
+    state.mac_addrs[2][4] = 0xff;
+    state.mac_addrs[2][5] = 0xff;
     // This is the legitimate hw address for imx8mm
     // (can be useful when debugging). 
     /*state.mac_addrs[0][0] = 0;
@@ -302,8 +294,26 @@ void init(void)
     ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
 
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
-    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 0);
+    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, NULL, 1);
+    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, NULL, 1);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 0);
+
+    /* Enqueue free buffers for the driver to access */
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_paddr + (BUF_SIZE * i);
+        int err = enqueue_free(&state.rx_ring_drv, addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    print("Mux rx init complete\n");
+    sel4cp_notify(DRIVER_CH);
+    /* 
+     * Notify all clients so they can finalise init. 
+     * Client id 2 is arp so this isn't required.
+     */
+    for (int client = 0; client < NUM_CLIENTS -1; client++) {
+        sel4cp_notify(client);
+    }
 
     return;
 }

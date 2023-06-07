@@ -3,21 +3,26 @@
 
 uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
-uintptr_t tx_free_cli;
-uintptr_t tx_used_cli;
+uintptr_t tx_free_cli0;
+uintptr_t tx_used_cli0;
+uintptr_t tx_free_cli1;
+uintptr_t tx_used_cli1;
 uintptr_t tx_free_arp;
 uintptr_t tx_used_arp;
 
-uintptr_t shared_dma_vaddr_cli;
-uintptr_t shared_dma_paddr_cli;
+uintptr_t shared_dma_vaddr_cli0;
+uintptr_t shared_dma_paddr_cli0;
+uintptr_t shared_dma_vaddr_cli1;
+uintptr_t shared_dma_paddr_cli1;
 uintptr_t shared_dma_vaddr_arp;
 uintptr_t shared_dma_paddr_arp;
 uintptr_t uart_base;
 
-#define CLIENT_CH 0
-#define ARP 1
-#define NUM_CLIENTS 2
-#define DRIVER_CH 2
+#define CLIENT_0 0
+#define CLIENT_1 1
+#define ARP 2
+#define NUM_CLIENTS 3
+#define DRIVER_CH 3
 #define DMA_SIZE 0x200000
 
 typedef struct state {
@@ -33,9 +38,12 @@ get_phys_addr(uintptr_t virtual)
 {
     int offset;
     uintptr_t base;
-    if (virtual >= shared_dma_vaddr_cli && virtual < shared_dma_vaddr_cli + DMA_SIZE) {
-        offset = virtual - shared_dma_vaddr_cli;
-        base = shared_dma_paddr_cli;
+    if (virtual >= shared_dma_vaddr_cli0 && virtual < shared_dma_vaddr_cli0 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli0;
+        base = shared_dma_paddr_cli0;
+    } else if (virtual >= shared_dma_vaddr_cli1 && virtual < shared_dma_vaddr_cli1 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli1;
+        base = shared_dma_paddr_cli1;
     } else if (virtual >= shared_dma_vaddr_arp && virtual < shared_dma_vaddr_arp + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_arp;
         base = shared_dma_paddr_arp;
@@ -52,10 +60,13 @@ get_virt_addr(uintptr_t phys)
 {
     int offset;
     uintptr_t base; 
-    if (phys >= shared_dma_paddr_cli && phys < shared_dma_paddr_cli + DMA_SIZE) {
-        offset = phys - shared_dma_paddr_cli;
-        base = shared_dma_vaddr_cli;
-    } else if (phys >= shared_dma_paddr_arp && phys < shared_dma_paddr_arp + DMA_SIZE) {
+    if (phys >= shared_dma_paddr_cli0 && phys < shared_dma_paddr_cli0 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli0;
+        base = shared_dma_vaddr_cli0;
+    } else if (phys >= shared_dma_paddr_cli1 && phys < shared_dma_paddr_cli1 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli1;
+        base = shared_dma_vaddr_cli1;
+    }else if (phys >= shared_dma_paddr_arp && phys < shared_dma_paddr_arp + DMA_SIZE) {
         offset = phys - shared_dma_paddr_arp;
         base = shared_dma_vaddr_arp;
     } else {
@@ -69,9 +80,11 @@ get_virt_addr(uintptr_t phys)
 static int
 get_client(uintptr_t addr)
 {
-    if (addr >= shared_dma_vaddr_cli && addr < shared_dma_vaddr_cli + DMA_SIZE) {
-        return CLIENT_CH;
-    } else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
+    if (addr >= shared_dma_vaddr_cli0 && addr < shared_dma_vaddr_cli0 + DMA_SIZE) {
+        return CLIENT_0;
+    } else if (addr >= shared_dma_vaddr_cli1 && addr < shared_dma_vaddr_cli1 + DMA_SIZE) {
+        return CLIENT_1;
+    }else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
         return ARP;
     }
     print("MUX TX|ERROR: Buffer out of range\n");
@@ -159,15 +172,8 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == CLIENT_CH || ch == ARP || ch == DRIVER_CH ) {
-        process_tx_complete();
-        process_tx_ready();
-    } else {
-       print("MUX TX|ERROR: unexpected notification from channel: ");
-       puthex64(ch);
-       print("\n");
-       assert(0);
-    }
+    process_tx_complete();
+    process_tx_ready();
 }
 
 void init(void)
@@ -175,8 +181,9 @@ void init(void)
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 0);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, NULL, 0);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, NULL, 0);
+    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 0);
 
     print("MUX: initialised\n");
 

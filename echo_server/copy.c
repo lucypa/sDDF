@@ -1,6 +1,7 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 #include <string.h>
+#include <stdbool.h>
 
 uintptr_t rx_free_mux;
 uintptr_t rx_used_mux;
@@ -21,7 +22,7 @@ uintptr_t uart_base;
 
 ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
-int initialised = 0;
+bool initialised = false;
 
 void process_rx_complete(void)
 {
@@ -34,6 +35,7 @@ void process_rx_complete(void)
             !ring_empty(rx_ring_cli.free_ring) &&
             !ring_full(rx_ring_mux.free_ring) &&
             !ring_full(rx_ring_cli.used_ring)) {
+
         uintptr_t m_addr, c_addr = 0;
         unsigned int m_len, c_len = 0;
         void *cookie = NULL;
@@ -105,15 +107,10 @@ void process_rx_complete(void)
 void notified(sel4cp_channel ch)
 {
     if (!initialised) {
-        /*
-         * Propogate this down the line to ensure everyone is
-         * initliased in correct order.
-         */
-        sel4cp_notify(MUX_RX_CH);
-        initialised = 1;
-        return;
+        // pass this on to the client.
+        sel4cp_notify(CLIENT_CH);
+        initialised = true;
     }
-
     if (ch == CLIENT_CH || ch == MUX_RX_CH) {
         /* We have one job. */
         process_rx_complete();
@@ -128,15 +125,8 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, NULL, 1);
+    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, NULL, 0);
     ring_init(&rx_ring_cli, (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
-
-    /* Enqueue free buffers for the mux to access */
-    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_mux + (BUF_SIZE * i);
-        int err = enqueue_free(&rx_ring_mux, addr, BUF_SIZE, NULL);
-        assert(!err);
-    }
 
     return;
 }
