@@ -183,7 +183,7 @@ static inline int enqueue_used(ring_handle_t *ring, uintptr_t addr, unsigned int
 }
 
 /**
- * Dequeue an element from an free ring buffer.
+ * Dequeue an element from the free ring buffer.
  *
  * @param ring Ring handle to dequeue from.
  * @param buffer pointer to the address of where to store buffer address.
