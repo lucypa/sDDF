@@ -106,13 +106,7 @@ int get_client(uintptr_t dma_vaddr) {
         }
     }
 
-    print("Mux rx did not find client with MAC: ");
-    dump_mac(ethhdr->dest.addr);
-    print("From MAC: ");
-    dump_mac(ethhdr->src.addr);
-    print("Type: ");
-    puthex64(ethhdr->type);
-    putC('\n');
+    /* Packet isn't for us */
     return -1;
 }
 

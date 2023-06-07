@@ -347,7 +347,7 @@ process_tx_queue(void)
 void
 process_rx_queue(void)
 {
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
         ethernet_buffer_t *buffer;

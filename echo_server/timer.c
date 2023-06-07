@@ -8,7 +8,7 @@
  * a maximum of a single timeout per client for simplicity. 
  * 
  * Interfaces for clients:
- * seL4cp_ppcall() with 0 is a request to get the current time.
+ * seL4cp_ppcall() with label 0 is a request to get the current time.
  * with a 1 is a request to set a timeout.
  */
 
@@ -109,28 +109,7 @@ notified(sel4cp_channel ch)
     if (ch == IRQ_CH) {
         irq(ch);
         sel4cp_irq_ack_delayed(ch);
-    } /*else if (ch == MUX_TX) {
-        // set a timeout of x 
-        rel_timeout = 108; // this should limit a 1500 byte packet to max 100 Mbps
-        cur_ticks = get_ticks();
-        abs_timeout = cur_ticks + rel_timeout;
-
-        timeouts[ch] = abs_timeout;
-        if ((!timeout_active || abs_timeout < current_timeout)
-            && (cur_ticks >> 32 == abs_timeout >> 32)) {
-            if (timeout_active) {
-                // there current timeout is now treated as pending 
-                pending_timeouts++;
-            }
-            gpt[OCR1] = abs_timeout;
-            gpt[IR] |= 1;
-            timeout_active = true;
-            current_timeout = abs_timeout;
-            active_channel = ch;
-        } else {
-            pending_timeouts++;
-        }
-    }*/
+    }
 }
 
 seL4_MessageInfo_t
