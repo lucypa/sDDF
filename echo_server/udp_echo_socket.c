@@ -28,7 +28,9 @@ static void lwip_udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *
 {
     err_t error = udp_sendto(pcb, p, addr, port);
     if (error) {
-        print("Failed to send UDP packet through socket\n");
+        print("Failed to send UDP packet through socket: ");
+        puthex64(error);
+        putC('\n');
     }
     pbuf_free(p);
 }

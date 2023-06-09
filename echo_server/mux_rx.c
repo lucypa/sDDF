@@ -186,7 +186,7 @@ bool process_rx_free(void)
     uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
     uint64_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
+        while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
             uintptr_t addr;
             unsigned int len;
             void *buffer;

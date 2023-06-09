@@ -27,8 +27,12 @@
 #define PD_ETH_ID       1
 #define PD_MUX_RX_ID    2
 #define PD_MUX_TX_ID    3
-#define PD_COPY_ID      4
-#define PD_LWIP_ID      5
+#define PD_COPY_0_ID    4
+#define PD_COPY_1_ID    5
+#define PD_CLIENT_0_ID  6
+#define PD_CLIENT_1_ID  7
+#define PD_ARP_ID       8
+#define PD_TIMER_ID     9
 
 uintptr_t uart_base;
 uintptr_t cyclecounters_vaddr;
@@ -66,8 +70,12 @@ sel4cp_benchmark_start(void)
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_LWIP_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_0_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_1_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_0_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_1_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -104,8 +112,12 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
         case PD_ETH_ID: print("ETH DRIVER"); break;
         case PD_MUX_RX_ID: print("MUX RX"); break;
         case PD_MUX_TX_ID: print("MUX TX"); break;
-        case PD_COPY_ID: print("COPIER"); break;
-        case PD_LWIP_ID: print("LWIP CLIENT"); break;
+        case PD_COPY_0_ID: print("COPIER 0"); break;
+        case PD_COPY_1_ID: print("COPIER_1"); break;
+        case PD_CLIENT_0_ID: print("CLIENT_0"); break;
+        case PD_CLIENT_1_ID: print("CLIENT_1"); break;
+        case PD_ARP_ID: print("ARP"); break;
+        case PD_TIMER_ID: print("TIMER"); break;
     }
     print(" (");
     puthex64(pd_id);
@@ -206,7 +218,7 @@ void notified(sel4cp_channel ch)
             sel4bench_get_counters(benchmark_bf, &counter_values[0]);
             sel4bench_stop_counters(benchmark_bf);
 
-            /* Dump the counters */
+            // Dump the counters
             print("{\n");
             for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
                 print(counter_names[i]);
@@ -233,11 +245,23 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop_tcb(PD_MUX_TX_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_MUX_TX_ID, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_COPY_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_ID, kernel, entries, number_schedules, total);
+            sel4cp_benchmark_stop_tcb(PD_COPY_0_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_COPY_0_ID, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_LWIP_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_LWIP_ID, kernel, entries, number_schedules, total);
+            sel4cp_benchmark_stop_tcb(PD_COPY_1_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_COPY_1_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_CLIENT_0_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_CLIENT_0_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_CLIENT_1_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_CLIENT_1_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_ARP_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_ARP_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);
             #endif
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
@@ -275,7 +299,7 @@ void init(void)
 
     benchmark_bf = mask;
 
-    /* Notify the idle thread that the sel4bench library is initialised. */
+    // Notify the idle thread that the sel4bench library is initialised.
     sel4cp_notify(INIT);
 
 #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
