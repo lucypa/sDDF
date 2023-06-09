@@ -28,7 +28,6 @@ uintptr_t tx_free;
 uintptr_t tx_used;
 uintptr_t uart_base;
 
-bool initialised = false;
 /* Make the minimum frame buffer 2k. This is a bit of a waste of memory, but ensures alignment */
 #define PACKET_BUFFER_SIZE  2048
 #define MAX_PACKET_SIZE     1536
@@ -418,7 +417,7 @@ eth_setup(void)
 {
     get_mac_addr(eth, mac);
     sel4cp_dbg_puts("MAC: ");
-    dump_mac(mac);
+    //dump_mac(mac);
     sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
@@ -505,31 +504,18 @@ eth_setup(void)
     eth->eimr = IRQ_MASK;
 }
 
-void init_post()
+void init(void)
 {
+    //print(sel4cp_name);
+    //print(": elf PD init function running\n");
+
+    eth_setup();
+
     /* Set up shared memory regions */
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
 
-    fill_rx_bufs();
-    print(sel4cp_name);
-    print(": init complete -- waiting for interrupt\n");
-
-    /* Now take away our scheduling context. Uncomment this for a passive driver. */
-    /* have_signal = true;
-    msg = seL4_MessageInfo_new(0, 0, 0, 1);
-    seL4_SetMR(0, 0);
-    signal = (MONITOR_EP); */
-}
-
-void init(void)
-{
-    print(sel4cp_name);
-    print(": elf PD init function running\n");
-
-    eth_setup();
-
-    /* Now wait for notification from lwip that buffers are initialised */
+    /* Now wait for notification that buffers are initialised */
 }
 
 seL4_MessageInfo_t
@@ -559,12 +545,7 @@ void notified(sel4cp_channel ch)
             sel4cp_irq_ack_delayed(ch);
             break;
         case RX_CH:
-            if (initialised) {
-                fill_rx_bufs();
-            } else {
-                init_post();
-                initialised = true;
-            }
+            fill_rx_bufs();
             break;
         case TX_CH:
             handle_tx(eth);

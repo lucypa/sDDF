@@ -290,7 +290,7 @@ void init(void)
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, NULL, 1);
     ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, NULL, 1);
-    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 0);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 1);
 
     /* Enqueue free buffers for the driver to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -299,15 +299,8 @@ void init(void)
         assert(!err);
     }
 
-    print("Mux rx init complete\n");
+    // Notify the driver that we are ready to receive. 
     sel4cp_notify(DRIVER_CH);
-    /* 
-     * Notify all clients so they can finalise init. 
-     * Client id 2 is arp so this isn't required.
-     */
-    for (int client = 0; client < NUM_CLIENTS -1; client++) {
-        sel4cp_notify(client);
-    }
 
     return;
 }

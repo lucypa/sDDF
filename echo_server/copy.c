@@ -22,7 +22,6 @@ uintptr_t uart_base;
 
 ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
-bool initialised = false;
 
 void process_rx_complete(void)
 {
@@ -106,11 +105,6 @@ void process_rx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    if (!initialised) {
-        // pass this on to the client.
-        sel4cp_notify(CLIENT_CH);
-        initialised = true;
-    }
     if (ch == CLIENT_CH || ch == MUX_RX_CH) {
         /* We have one job. */
         process_rx_complete();

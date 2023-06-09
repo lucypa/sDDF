@@ -23,6 +23,8 @@ uintptr_t uart_base;
 #define ARP 2
 #define NUM_CLIENTS 3
 #define DRIVER_CH 3
+#define NUM_BUFFERS 512
+#define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
 
 typedef struct state {
@@ -181,11 +183,28 @@ void init(void)
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, NULL, 0);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, NULL, 0);
-    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 0);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, NULL, 1);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, NULL, 1);
+    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 1);
 
-    print("MUX: initialised\n");
+    /* Enqueue free transmit buffers to all clients. */
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_cli0 + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[0], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
 
     return;
 }

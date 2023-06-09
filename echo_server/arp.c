@@ -254,15 +254,8 @@ void
 init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 1);
-
-    /* Enqueue free buffers ready for tx mux */
-    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_tx + (BUF_SIZE * i);
-        int err = enqueue_free(&tx_ring, addr, BUF_SIZE, NULL);
-        assert(!err);
-    }
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
 
     /* Set up hardcoded mac addresses */
     mac_addrs[0][0] = 0x52;
