@@ -167,4 +167,6 @@ init(void)
     gpt[IR] = (
         (1 << 5) // rollover interrupt
     );
+
+    /* Now go passive! */
 }

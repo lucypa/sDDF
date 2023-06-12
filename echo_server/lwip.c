@@ -19,6 +19,7 @@
 #include "shared_ringbuffer.h"
 #include "echo.h"
 #include "timer.h"
+#include "cache.h"
 
 #define TIMER  1
 #define RX_CH  2
@@ -217,6 +218,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     /* Grab an free TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     err_t ret = ERR_OK;
+    int err;
 
     if (p->tot_len > BUF_SIZE) {
         print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
@@ -249,12 +251,13 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
+    /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
     if (err) {
         print("LWIP|ERROR: ARM VSpace clean failed: ");
         puthex64(err);
         print("\n");
-    }
+    }*/
+    cleanCache(frame, frame + copied);
 
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
@@ -297,12 +300,13 @@ process_tx_queue(void)
             copied += curr->len;
         }
 
-        err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
+        /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
         if (err) {
             print("LWIP|ERROR: ARM VSpace clean failed: ");
             puthex64(err);
             print("\n");
-        }
+        }*/
+        cleanCache(frame, frame + copied);
 
         /* insert into the used tx queue */
         err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);
@@ -427,12 +431,9 @@ void dump_log(void)
 
 void init(void)
 {
-    print(sel4cp_name);
-    print(": elf PD init function running\n");
-
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
-    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 1);
+    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
     state.head = NULL;
     state.tail = NULL;
@@ -476,6 +477,9 @@ void init(void)
 
     setup_udp_socket();
     setup_utilization_socket();
+
+    print(sel4cp_name);
+    print(": elf PD init complete\n");
 }
 
 void notified(sel4cp_channel ch)

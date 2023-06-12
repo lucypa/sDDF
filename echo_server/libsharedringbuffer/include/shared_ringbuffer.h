@@ -14,12 +14,9 @@
 
 #define SIZE 512
 
-/* Function pointer to be used to 'notify' components on either end of the shared memory */
-typedef void (*notify_fn)(void);
-
 /* Buffer descriptor */
 typedef struct buff_desc {
-    uintptr_t encoded_addr; /* encoded dma addresses */
+    uintptr_t addr; /* encoded dma addresses */
     unsigned int len; /* associated memory lengths */
     void *cookie; /* index into client side metadata */
 } buff_desc_t;
@@ -35,8 +32,6 @@ typedef struct ring_buffer {
 typedef struct ring_handle {
     ring_buffer_t *free_ring;
     ring_buffer_t *used_ring;
-    /* Function to be used to signal that work is queued in the used_ring */
-    notify_fn notify;
 } ring_handle_t;
 
 /**
@@ -45,11 +40,10 @@ typedef struct ring_handle {
  * @param ring ring handle to use.
  * @param free pointer to free ring in shared memory.
  * @param used pointer to 'used' ring in shared memory.
- * @param notify function pointer used to notify the other user.
  * @param buffer_init 1 indicates the read and write indices in shared memory need to be initialised.
  *                    0 inidicates they do not. Only one side of the shared memory regions needs to do this.
  */
-void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, notify_fn notify, int buffer_init);
+void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, int buffer_init);
 
 /**
  * Check if the ring buffer is empty.
@@ -83,17 +77,6 @@ static inline int ring_size(ring_buffer_t *ring)
 }
 
 /**
- * Notify the other user of changes to the shared ring buffers.
- *
- * @param ring the ring handle used.
- *
- */
-static inline void notify(ring_handle_t *ring)
-{
-    return ring->notify();
-}
-
-/**
  * Enqueue an element to a ring buffer
  *
  * @param ring Ring buffer to enqueue into.
@@ -110,7 +93,7 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
         return -1;
     }
 
-    ring->buffers[ring->write_idx % SIZE].encoded_addr = buffer;
+    ring->buffers[ring->write_idx % SIZE].addr = buffer;
     ring->buffers[ring->write_idx % SIZE].len = len;
     ring->buffers[ring->write_idx % SIZE].cookie = cookie;
 
@@ -136,9 +119,9 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    assert(ring->buffers[ring->read_idx % SIZE].encoded_addr != 0);
+    assert(ring->buffers[ring->read_idx % SIZE].addr != 0);
 
-    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
+    *addr = ring->buffers[ring->read_idx % SIZE].addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
     *cookie = ring->buffers[ring->read_idx % SIZE].cookie;
 
@@ -230,7 +213,7 @@ static int driver_dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
+    *addr = ring->buffers[ring->read_idx % SIZE].addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
     *cookie = &ring->buffers[ring->read_idx % SIZE];
 

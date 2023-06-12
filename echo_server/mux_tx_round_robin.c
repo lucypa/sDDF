@@ -182,10 +182,10 @@ void init(void)
 {
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, NULL, 1);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, NULL, 1);
-    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 1);
+    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, 1);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, 1);
+    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1);
 
     /* Enqueue free transmit buffers to all clients. */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -205,6 +205,8 @@ void init(void)
         int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
         assert(!err);
     }
+
+    // print("Mux tx init complete\n");
 
     return;
 }

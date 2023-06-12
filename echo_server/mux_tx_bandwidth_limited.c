@@ -24,9 +24,12 @@ typedef struct state {
     /* Pointers to shared buffers */
     ring_handle_t tx_ring_drv;
     ring_handle_t tx_ring_clients[NUM_CLIENTS];
+    int client_priority_order[NUM_CLIENTS];
 } state_t;
 
 state_t state;
+uint64_t start_time;
+// need an overflow count. 
 
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
@@ -79,28 +82,54 @@ get_client(uintptr_t addr)
 }
 
 /*
-Loop over all used tx buffers in client queues and enqueue to driver.
-TODO: Put client prioritisation in here.
-*/
+ * Loop over all used tx buffers in client queues and enqueue to driver.
+ */
 void process_tx_ready(void)
 {
     uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
+    int client;
+    int err;
+    uint64_t start_time, curr_time;
+    int byte_count;
 
-    for (int client = 0; client < NUM_CLIENTS; client++) {
+    /* 
+     * Loop through clients in their priority ordering.
+     * Process packets until they reach their quota for that
+     * timeslice. 
+     */
+    for (int prio = 0; prio < NUM_CLIENTS && !ring_full(state.tx_ring_drv.used_ring); prio++) {
+        client = state.client_priority_order[prio];
+        // Process all queued packets for this client. 
+
+        // need to store this globally to save state between schedules. 
+        byte_count = 0;
         while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *cookie;
+            uintptr_t phys;
 
-            int err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
+            err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
             assert(!err);
-            uintptr_t phys = get_phys_addr(addr);
+            phys = get_phys_addr(addr);
             assert(phys);
             err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
             assert(!err);
 
+            byte_count += len;
             enqueued += 1;
+
+            curr_time = get_timestamp();
+            // TODO: account for overflow here! 
+            if curr_time - start_time <= TIMESLICE && byte_count >= byte_limit[client] {
+                // if there are still packets left, we might not get a notification to send them out.
+                break;
+            } else if curr_time - start_time > TIMESLICE {
+                // update the start_time to be value. 
+                // probably also need to update the clients byte counts. 
+                start_time = curr_time;
+            }
         }
     }
 
@@ -165,9 +194,19 @@ void init(void)
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, 1);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, 0);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 0);
 
+    /* Set up the map of client ids in order of their priority. 
+     * Ie client_priority_order[0] is the id of the client with highest priority. 
+     */
+    state.client_priority_order[0] = CLIENT_CH;
+    state.client_priority_order[1] = ARP;
+
+    /* 
+     * Do we keep an active list of which clients we should enqueue/dequeue from? 
+     */
+    
     print("MUX: initialised\n");
 
     return;

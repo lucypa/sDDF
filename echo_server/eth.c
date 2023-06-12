@@ -236,7 +236,7 @@ handle_rx(volatile struct enet_regs *eth)
         ring->remain++;
 
         buff_desc_t *desc = (buff_desc_t *)cookie;
-        int err = enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
+        int err = enqueue_used(&rx_ring, desc->addr, d->len, desc->cookie);
         if (err) {
             print("ETH|ERROR: Failed to enqueue to RX used ring\n");
         }
@@ -365,7 +365,7 @@ complete_tx(volatile struct enet_regs *eth)
             ring->remain += cnt_org;
             /* give the buffer back */
             buff_desc_t *desc = (buff_desc_t *)cookie;
-            int err = enqueue_free(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+            int err = enqueue_free(&tx_ring, desc->addr, desc->len, desc->cookie);
             assert(!err);
             enqueued++;
         }
@@ -417,7 +417,7 @@ eth_setup(void)
 {
     get_mac_addr(eth, mac);
     sel4cp_dbg_puts("MAC: ");
-    //dump_mac(mac);
+    // dump_mac(mac);
     sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
@@ -474,12 +474,14 @@ eth_setup(void)
     eth->txic0 = ICEN | ICFT(128) | 0x200;
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
-    eth->tfwr = 0;
+    eth->tfwr = STRFWD;
 
     /* enable store and forward. This must be done for hardware csums*/
     eth->rsfl = 0;
     /* Do not forward frames with errors + check the csum */
     eth->racc = RACC_LINEDIS | RACC_IPDIS | RACC_PRODIS;
+
+    eth->tacc = TACC_PROCHK | TACC_IPCHK;
 
     /* Set RDSR */
     eth->rdsr = hw_ring_buffer_paddr;
@@ -506,14 +508,14 @@ eth_setup(void)
 
 void init(void)
 {
-    //print(sel4cp_name);
-    //print(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     eth_setup();
 
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
     /* Now wait for notification that buffers are initialised */
 }

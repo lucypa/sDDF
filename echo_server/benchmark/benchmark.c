@@ -206,7 +206,7 @@ void notified(sel4cp_channel ch)
             sel4bench_get_counters(benchmark_bf, &counter_values[0]);
             sel4bench_stop_counters(benchmark_bf);
 
-            /* Dump the counters */
+            // Dump the counters 
             print("{\n");
             for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
                 print(counter_names[i]);

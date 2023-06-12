@@ -37,6 +37,13 @@
 #define CHECKSUM_CHECK_ICMP             0
 #define CHECKSUM_CHECK_ICMP6            0
 
+/* Leave the checksum checking on tx to hw */
+#define CHECKSUM_GEN_IP                 0
+#define CHECKSUM_GEN_UDP                0
+#define CHECKSUM_GEN_TCP                0
+#define CHECKSUM_GEN_ICMP               0
+#define CHECKSUM_GEN_ICMP6              0
+
 #define TCP_SND_QUEUELEN 2500
 #define MEMP_NUM_TCP_SEG TCP_SND_QUEUELEN
 #define TCP_SND_BUF (100 * TCP_MSS)

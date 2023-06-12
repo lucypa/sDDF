@@ -141,7 +141,7 @@ arp_reply(const uint8_t *ethsrc_addr[ETH_HWADDR_LEN],
     // then padding of 10 bytes
     memset(&reply->padding, 0, 10);
     // then CRC (size of the arp packet (28B) + ethernet header (14B))
-    reply->crc = inet_chksum(reply, 42);
+    // reply->crc = inet_chksum(reply, 42);
 
     // clean cache
     err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)reply, (uintptr_t)reply + 64);
@@ -254,8 +254,8 @@ void
 init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
     /* Set up hardcoded mac addresses */
     mac_addrs[0][0] = 0x52;

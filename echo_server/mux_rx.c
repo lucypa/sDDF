@@ -137,6 +137,8 @@ void process_rx_complete(void)
             puthex64(addr);
             print("\n");
         }
+
+        /* Can't do this one from user space unfortunately */
         err = seL4_ARM_VSpace_Invalidate_Data(3, vaddr, vaddr + ETHER_MTU);
         if (err) {
             print("MUX RX|ERROR: ARM Vspace invalidate failed\n");
@@ -186,6 +188,7 @@ bool process_rx_free(void)
     uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
     uint64_t enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
+        // state.rx_free_clients[i].free_ring.notify_consumer = false;
         while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
             uintptr_t addr;
             unsigned int len;
@@ -204,6 +207,11 @@ bool process_rx_free(void)
             assert(!err);
             enqueued += 1;
         }
+        
+        // ensure we got notified for next time.
+        /*if (ring_empty(state.rx_ring_drv.free_ring)) {
+            state.rx_free_clients[i].free_ring.notify_consumer = true;
+        }*/
     }
 
     /* We only want to notify the driver if the queue either was empty, or
@@ -285,12 +293,12 @@ void init(void)
     state.mac_addrs[0][5] = 0xcc;*/
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
+    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, 1);
 
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, NULL, 1);
-    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, NULL, 1);
-    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 1);
+    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1);
+    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1);
 
     /* Enqueue free buffers for the driver to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -301,6 +309,8 @@ void init(void)
 
     // Notify the driver that we are ready to receive. 
     sel4cp_notify(DRIVER_CH);
+
+    // print("Mux rx init complete\n");
 
     return;
 }

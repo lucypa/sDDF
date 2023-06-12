@@ -210,7 +210,7 @@
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
         </protection_domain>
 
-        <protection_domain name="timer" priority="101" pp="true" id="9">
+        <protection_domain name="timer" priority="101" pp="true" id="9" passive="true">
             <program_image path="timer.elf" />
             <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
             <irq irq="87" id="0" /> <!-- timer interrupt -->
