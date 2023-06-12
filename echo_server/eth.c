@@ -475,12 +475,11 @@ eth_setup(void)
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
     eth->tfwr = STRFWD;
-
-    /* enable store and forward. This must be done for hardware csums*/
+    /* clear rx store and forward. This must be done for hardware csums*/
     eth->rsfl = 0;
     /* Do not forward frames with errors + check the csum */
     eth->racc = RACC_LINEDIS | RACC_IPDIS | RACC_PRODIS;
-
+    /* add the checksum for known IP protocols */
     eth->tacc = TACC_PROCHK | TACC_IPCHK;
 
     /* Set RDSR */
