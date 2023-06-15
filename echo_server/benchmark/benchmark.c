@@ -22,15 +22,16 @@
 #define START 1
 #define STOP 2
 
-#define INIT 3
+#define IDLE0 3
+#define IDLE1 4
+#define IDLE2 5
+#define IDLE3 6
+
+#define NOTIFY_START 7
+#define NOTIFY_STOP 8
 
 #define PD_ETH_ID       1
-#define PD_MUX_RX_ID    2
-#define PD_MUX_TX_ID    3
-#define PD_COPY_0_ID    4
-#define PD_COPY_1_ID    5
 #define PD_CLIENT_0_ID  6
-#define PD_CLIENT_1_ID  7
 #define PD_ARP_ID       8
 #define PD_TIMER_ID     9
 
@@ -67,13 +68,7 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_0_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_1_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_0_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_1_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
     seL4_BenchmarkResetLog();
@@ -109,13 +104,7 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
 {
     print("Utilisation details for PD: ");
     switch (pd_id) {
-        case PD_ETH_ID: print("ETH DRIVER"); break;
-        case PD_MUX_RX_ID: print("MUX RX"); break;
-        case PD_MUX_TX_ID: print("MUX TX"); break;
-        case PD_COPY_0_ID: print("COPIER 0"); break;
-        case PD_COPY_1_ID: print("COPIER_1"); break;
         case PD_CLIENT_0_ID: print("CLIENT_0"); break;
-        case PD_CLIENT_1_ID: print("CLIENT_1"); break;
         case PD_ARP_ID: print("ARP"); break;
         case PD_TIMER_ID: print("TIMER"); break;
     }
@@ -136,7 +125,6 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
     print("TotalUtilisation: ");
     puthex64(total_util);
     print("\n");
-    print("}\n");
 }
 #endif
 
@@ -213,6 +201,7 @@ void notified(sel4cp_channel ch)
             seL4_BenchmarkResetLog();
             #endif
 
+            sel4cp_notify(NOTIFY_START);
             break;
         case STOP:
             sel4bench_get_counters(benchmark_bf, &counter_values[0]);
@@ -226,6 +215,7 @@ void notified(sel4cp_channel ch)
                 puthex64(counter_values[i]);
                 print("\n");
             }
+            print("}\n");
 
             #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
             uint64_t total;
@@ -236,26 +226,8 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
 
-            sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_MUX_RX_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_RX_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_MUX_TX_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_TX_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_COPY_0_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_0_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_COPY_1_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_1_ID, kernel, entries, number_schedules, total);
-
             sel4cp_benchmark_stop_tcb(PD_CLIENT_0_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_CLIENT_0_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_CLIENT_1_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_CLIENT_1_ID, kernel, entries, number_schedules, total);
 
             sel4cp_benchmark_stop_tcb(PD_ARP_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ARP_ID, kernel, entries, number_schedules, total);
@@ -271,7 +243,8 @@ void notified(sel4cp_channel ch)
             puthex64(entries);
             seL4_BenchmarkTrackDumpSummary(log_buffer, entries);
             #endif
-
+            THREAD_MEMORY_RELEASE();
+            sel4cp_notify(NOTIFY_STOP);
             break;
         default:
             print("Bench thread notified on unexpected channel\n");
@@ -300,7 +273,11 @@ void init(void)
     benchmark_bf = mask;
 
     // Notify the idle thread that the sel4bench library is initialised.
-    sel4cp_notify(INIT);
+    sel4cp_notify(IDLE0);
+    sel4cp_notify(IDLE1);
+    sel4cp_notify(IDLE2);
+    sel4cp_notify(IDLE3);
+
 
 #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
     int res_buf = seL4_BenchmarkSetLogBuffer(LOG_BUFFER_CAP);

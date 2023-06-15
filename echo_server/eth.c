@@ -197,7 +197,7 @@ handle_rx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &rx;
     unsigned int head = ring->head;
     int num = 0;
-    int was_empty = ring_empty(rx_ring.used_ring);
+    int og_size = ring_size(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
@@ -249,7 +249,7 @@ handle_rx(volatile struct enet_regs *eth)
      * Driver runs at highest priority, so buffers will be refilled
      * by caller before the notify causes a context switch.
      */
-    if (num && was_empty) {
+    if ((og_size == 0 || og_size + num != ring_size(rx_ring.used_ring)) && num != 0) {
         sel4cp_notify(RX_CH);
     }
 }
@@ -263,12 +263,7 @@ raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
     /* Ensure we have room */
     if (ring->remain < num) {
         /* not enough room, try to complete some and check again */
-        complete_tx(eth);
-        unsigned int rem = ring->remain;
-        if (rem < num) {
-            print("TX queue lacks space");
-            return;
-        }
+        return;
     }
 
     __sync_synchronize();
@@ -470,17 +465,16 @@ eth_setup(void)
 
     eth->opd = PAUSE_OPCODE_FIELD;
 
-    /* coalesce transmit IRQs to batches of 128 */
-    eth->txic0 = ICEN | ICFT(128) | 0x200;
+    /* coalesce transmit IRQs to batches of 128 *///0x200
+    eth->txic0 = ICEN | ICFT(128) | 0xFF;
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
-    eth->tfwr = 0;
-
-    /* enable store and forward. This must be done for hardware csums*/
+    eth->tfwr = STRFWD;
+    /* Rx clear store and forward. This must be done for hardware csums*/
     eth->rsfl = 0;
     /* Do not forward frames with errors + check the csum */
     eth->racc = RACC_LINEDIS | RACC_IPDIS | RACC_PRODIS;
-
+    eth->tacc = TACC_IPCHK | TACC_PROCHK;
     /* Set RDSR */
     eth->rdsr = hw_ring_buffer_paddr;
     eth->tdsr = hw_ring_buffer_paddr + (sizeof(struct descriptor) * RX_COUNT);

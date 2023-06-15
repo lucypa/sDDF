@@ -23,6 +23,7 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
+#define NUM_CORES 4
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.
@@ -78,11 +79,14 @@ uintptr_t cyclecounters_vaddr;
     ","STR(y)","STR(z)
 
 
-struct bench *bench = (void *)(uintptr_t)0x5010000;
+struct idle_counters {
+    struct bench *bench[NUM_CORES];
+};
 
-uint64_t start;
-uint64_t idle_ccount_start;
-uint64_t idle_overflow_start;
+struct idle_counters idle_counts;
+uint64_t start[4];
+uint64_t idle_ccount_start[4];
+uint64_t idle_overflow_start[4];
 
 
 static inline void my_reverse(char s[])
@@ -149,19 +153,24 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
     } else if (msg_match(data_packet_str, START)) {
         print("measurement starting... \n");
 
-        start = bench->ts;
-        idle_ccount_start = bench->ccount;
-        idle_overflow_start = bench->overflows;
+        for (int i = 0; i < NUM_CORES; i++) {
+            start[i] = idle_counts.bench[i]->ts;
+            idle_ccount_start[i] = idle_counts.bench[i]->ccount;
+            idle_overflow_start[i] = idle_counts.bench[i]->overflows;
+        }
 
         sel4cp_notify(START_PMU);
     } else if (msg_match(data_packet_str, STOP)) {
         print("measurement finished \n");;
 
-        uint64_t total, idle;
+        uint64_t total = 0;
+        uint64_t idle = 0;
 
-        total = bench->ts - start;
-        total += ULONG_MAX * (bench->overflows - idle_overflow_start);
-        idle = bench->ccount - idle_ccount_start;
+        for (int i = 0; i < NUM_CORES; i++) {
+            total += (idle_counts.bench[i]->ts - start[i]);
+            total += ULONG_MAX * (idle_counts.bench[i]->overflows - idle_overflow_start[i]);
+            idle += idle_counts.bench[i]->ccount - idle_ccount_start[i];
+        }
 
         char tbuf[16];
         my_itoa(total, tbuf);
@@ -181,7 +190,6 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         strcat(buffer, ",");
         strcat(buffer, tbuf);
 
-        // sel4cp_dbg_puts(buffer);
         error = tcp_write(pcb, buffer, strlen(buffer), TCP_WRITE_FLAG_COPY);
 
         tcp_shutdown(pcb, 0, 1);
@@ -227,8 +235,6 @@ int setup_utilization_socket(void)
     if (error) {
         print("Failed to bind the TCP socket");
         return -1;
-    } else {
-        // print("Utilisation port bound to port 1236\n");
     }
 
     utiliz_socket = tcp_listen_with_backlog_and_err(utiliz_socket, 1, &error);
@@ -238,5 +244,11 @@ int setup_utilization_socket(void)
     }
     tcp_accept(utiliz_socket, utilization_accept_callback);
 
+
+    /* Set up shared data structures for recording idle counts */
+    idle_counts.bench[0] = (void *)(uintptr_t)0x5010000;
+    idle_counts.bench[1] = (void *)(uintptr_t)0x5011000;
+    idle_counts.bench[2] = (void *)(uintptr_t)0x5012000;
+    idle_counts.bench[3] = (void *)(uintptr_t)0x5013000;
     return 0;
 }

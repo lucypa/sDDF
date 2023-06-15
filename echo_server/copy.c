@@ -27,7 +27,7 @@ void process_rx_complete(void)
 {
     bool mux_was_full = ring_full(rx_ring_mux.used_ring);
     uint64_t mux_free_original_size = ring_size(rx_ring_mux.free_ring);
-    bool cli_used_was_empty = ring_empty(rx_ring_cli.used_ring);
+    bool cli_used_size = ring_size(rx_ring_cli.used_ring);
     uint64_t enqueued = 0;
     // We only want to copy buffers if all the dequeues and enqueues will be successful
     while (!ring_empty(rx_ring_mux.used_ring) &&
@@ -80,7 +80,9 @@ void process_rx_complete(void)
         enqueued += 1;
     }
 
-    if (cli_used_was_empty && enqueued) {
+    if ((cli_used_size == 0 ||
+            cli_used_size + enqueued != ring_size(rx_ring_cli.used_ring)) 
+            && enqueued) {
         sel4cp_notify_delayed(CLIENT_CH);
     }
 

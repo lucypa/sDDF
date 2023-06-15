@@ -12,16 +12,15 @@
 #include "bench.h"
 #include "util.h"
 
-#define INIT 3
 #define MAGIC_CYCLES 150
 #define ULONG_MAX 0xfffffffffffffffful
 
 uintptr_t cyclecounters_vaddr;
 
-struct bench *b = (void *)(uintptr_t)0x5010000;
-
 void count_idle(void)
 {
+    struct bench *b = (void *)cyclecounters_vaddr;
+
     b->prev = sel4bench_get_cycle_count();
     b->ccount = 0;
     b->overflows = 0;
@@ -42,7 +41,6 @@ void count_idle(void)
 
         if (diff < MAGIC_CYCLES) {
             COMPILER_MEMORY_FENCE();
-
             b->ccount += diff;
             COMPILER_MEMORY_FENCE();
         }
@@ -53,14 +51,8 @@ void count_idle(void)
 
 void notified(sel4cp_channel ch)
 {
-    switch(ch) {
-        case INIT:
-            // init is complete so we can start counting.
-            count_idle();
-            break;
-        default:
-            sel4cp_dbg_puts("Idle thread notified on unexpected channel\n");
-    }
+    // init is complete so we can start counting.
+    count_idle();
 }
 
 void init(void)

@@ -19,6 +19,7 @@
 #include "shared_ringbuffer.h"
 #include "echo.h"
 #include "timer.h"
+#include "cache.h"
 
 #define TIMER  1
 #define RX_CH  2
@@ -216,7 +217,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
     /* Grab an free TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
-    err_t ret = ERR_OK;
+    int err;
 
     if (p->tot_len > BUF_SIZE) {
         print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
@@ -249,12 +250,14 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    int err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)frame, (uintptr_t)frame + copied);
+    /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
     if (err) {
         print("LWIP|ERROR: ARM VSpace clean failed: ");
         puthex64(err);
         print("\n");
-    }
+    }*/
+    cleanCache(frame, frame + copied);
+
 
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
@@ -268,7 +271,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     /* Notify the server for next time we recv() */
     notify_tx = true;
     // sel4cp_notify(TX_CH);
-    return ret;
+    return ERR_OK;
 }
 
 void
@@ -297,12 +300,13 @@ process_tx_queue(void)
             copied += curr->len;
         }
 
-        err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
+        /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
         if (err) {
             print("LWIP|ERROR: ARM VSpace clean failed: ");
             puthex64(err);
             print("\n");
-        }
+        }*/
+        cleanCache(frame, frame + copied);
 
         /* insert into the used tx queue */
         err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);

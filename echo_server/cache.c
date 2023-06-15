@@ -29,18 +29,7 @@ cleanInvalByVA(unsigned long vaddr)
 static inline void
 cleanByVA(unsigned long vaddr)
 {
-    puthex64(vaddr);
-    unsigned long ctr_el0;
-    asm volatile( "mrs	%0, ctr_el0" : "=r"(ctr_el0)); // read CTR_EL0
-    puthex64(ctr_el0);
     asm volatile("dc cvac, %0" : : "r"(vaddr));
-    dmb();
-}
-
-static inline void
-invalidateByVA(unsigned long vaddr)
-{
-    asm volatile("dc ivac, %0" : : "r"(vaddr));
     dmb();
 }
 
@@ -71,27 +60,4 @@ cleanCache(unsigned long start, unsigned long end)
         line = index << CONFIG_L1_CACHE_LINE_SIZE_BITS;
         cleanByVA(line);
     }
-}
-
-void
-invalidateCache(unsigned long start, unsigned long end)
-{
-    unsigned long line;
-    unsigned long index;
-
-    if (start != LINE_START(start)) {
-        cleanCache(start, start);
-    }
-    if (end + 1 != LINE_START(end + 1)) {
-        line = LINE_START(end);
-        cleanCache(line, line);
-    }
-
-    /* Now invalidate L1 range */
-    for (index = LINE_INDEX(start); index < LINE_INDEX(end) + 1; index++) {
-        line = index << CONFIG_L1_CACHE_LINE_SIZE_BITS;
-        invalidateByVA(line);
-    }
-    /* Ensure invalidate completes */
-    dsb();
 }
