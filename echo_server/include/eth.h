@@ -233,15 +233,12 @@ struct descriptor {
 
 /*
  * Housekeeping for NIC ring buffers.
- * Ring empty = (tail == head)
- * Ring full = ((tail - head - 2) % cnt == 0)
- * Invariants: 0 <= tail < cnt
- *             0 <= head < cnt
- *             remain = (tail - head - 2) % cnt
- *             (tail - head) % cnt >= 2
- *             descr[head] through desc[tail]
+ * Invariants: 0 <= write < cnt
+ *             0 <= read < write
+ *             remaining = (read - write) % cnt
+ *             descr[read] through desc[write]
  *                   are ready to be or have been used for DMA
- *             descr[(tail + 1) % cnt] through descr[(head - 1) % cnt]
+ *             descr[write % cnt] through descr[(read - 1) % cnt]
  *                   are unused.
  */
 typedef struct {
