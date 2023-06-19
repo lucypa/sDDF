@@ -17,7 +17,8 @@
 #define START 1
 #define STOP 2
 
-#define PD_COPY_0_ID    4
+#define PD_MUX_TX_ID    3
+#define PD_ETH_CLI_ID   2
 uintptr_t uart_base;
 
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
@@ -25,7 +26,8 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_0_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_CLI_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -34,7 +36,8 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
 {
     print("Utilisation details for PD: ");
     switch (pd_id) {
-        case PD_COPY_0_ID: print("COPY 0"); break;
+        case PD_MUX_TX_ID: print("TX MUX"); break;
+        case PD_ETH_CLI_ID: print("ETH CLIENT"); break;
         default: print("CORE 2 TOTALS");
     }
     print(" (");
@@ -76,8 +79,11 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
             
-            sel4cp_benchmark_stop_tcb(PD_COPY_0_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_0_ID, kernel, entries, number_schedules, total);
+            sel4cp_benchmark_stop_tcb(PD_MUX_TX_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_MUX_TX_ID, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_ETH_CLI_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_ETH_CLI_ID, kernel, entries, number_schedules, total);
             #endif
 
             break;

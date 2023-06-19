@@ -22,7 +22,8 @@ uintptr_t uart_base;
 #define CLIENT_1 1
 #define ARP 2
 #define NUM_CLIENTS 3
-#define DRIVER_CH 3
+#define DRIVER_SEND 3
+#define DRIVER_RECV 4
 #define NUM_BUFFERS 512
 #define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
@@ -130,7 +131,8 @@ void process_tx_ready(void)
     }
 
     if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
-        sel4cp_notify_delayed(DRIVER_CH);
+        sel4cp_ppcall(DRIVER_SEND, sel4cp_msginfo_new(0, 0));
+        //sel4cp_notify_delayed(DRIVER_SEND);
     }
 }
 
