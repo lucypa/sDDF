@@ -246,8 +246,20 @@ struct descriptor {
  */
 typedef struct {
     unsigned int cnt;
-    unsigned int tail;
-    unsigned int head;
+    unsigned int write;
+    unsigned int read;
     volatile struct descriptor *descr;
     void **cookies;
 } ring_ctx_t;
+
+static inline bool
+hw_ring_full(ring_ctx_t *ring)
+{
+    return !((ring->write - ring->read + 1) % ring->cnt);
+}
+
+static inline bool
+hw_ring_empty(ring_ctx_t *ring)
+{
+    return !((ring->write - ring->read ) % ring->cnt);
+}

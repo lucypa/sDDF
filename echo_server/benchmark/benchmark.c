@@ -208,7 +208,7 @@ void notified(sel4cp_channel ch)
             sel4bench_stop_counters(benchmark_bf);
 
             // Dump the counters
-            print("{\n");
+            print("{ CORE 3:\n");
             for (int i = 0; i < ARRAY_SIZE(benchmarking_events); i++) {
                 print(counter_names[i]);
                 print(": ");

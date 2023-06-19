@@ -31,12 +31,6 @@ bool initialised = false;
 
 volatile struct enet_regs *eth = (void *)(uintptr_t)0x2000000;
 
-static int
-ring_remaining(ring_ctx_t *ring)
-{
-    return (ring->tail - ring->head - 2) % ring->cnt;
-}
-
 static void update_ring_slot(
     ring_ctx_t *ring,
     unsigned int idx,
@@ -62,38 +56,36 @@ raw_tx(volatile struct enet_regs *eth, uintptr_t phys,
 {
     ring_ctx_t *ring = tx;
 
-    __sync_synchronize();
-
-    unsigned int tail = ring->tail;
-    unsigned int tail_new = tail;
+    unsigned int write = ring->write;
+    unsigned int write_new = write;
 
     uint16_t stat = TXD_READY | TXD_ADDCRC | TXD_LAST;
 
-    if (++tail_new == TX_COUNT) {
-        tail_new = 0;
+    unsigned int idx = write_new;
+    if (++write_new == TX_COUNT) {
+        write_new = 0;
         stat |= WRAP;
     }
+    update_ring_slot(ring, idx, phys, len, stat);
 
-    update_ring_slot(ring, tail, phys, len, stat);
-    ring->cookies[tail] = cookie;
-    __sync_synchronize();
-    ring->tail = tail_new;
+    ring->cookies[write] = cookie;
 
+    THREAD_MEMORY_RELEASE();
+    ring->write = write_new;
 
     if (!(eth->tdar & TDAR_TDAR)) {
         eth->tdar = TDAR_TDAR;
     }
 }
 
-static void 
+static void
 handle_tx(volatile struct enet_regs *eth)
 {
     uintptr_t buffer = 0;
     unsigned int len = 0;
     void *cookie = NULL;
 
-    // We need to put in an empty condition here. 
-    while ((ring_remaining(tx) > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+    while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
         raw_tx(eth, buffer, len, cookie);
     }
 }
@@ -104,6 +96,7 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     if (initialised) {
         handle_tx(eth);
     }
+
     return sel4cp_msginfo_new(0, 0);
 }
 
