@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "cache.h"
 #include <string.h>
 #include "lwip/ip_addr.h"
 #include "netif/etharp.h"
@@ -144,12 +145,7 @@ arp_reply(const uint8_t *ethsrc_addr[ETH_HWADDR_LEN],
     // reply->crc = inet_chksum(reply, 42);
 
     // clean cache
-    err = seL4_ARM_VSpace_Clean_Data(3, (uintptr_t)reply, (uintptr_t)reply + 64);
-    if (err) {
-        print("ARP|ERROR: ARM VSpace clean failed: ");
-        puthex64(err);
-        print("\n");
-    }
+    cleanCache((uintptr_t)reply, (uintptr_t)reply + 64);
 
     /* insert into the used tx queue */
     err = enqueue_used(&tx_ring, (uintptr_t)reply, 56, cookie);

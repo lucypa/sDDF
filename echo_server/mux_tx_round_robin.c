@@ -22,7 +22,7 @@ uintptr_t uart_base;
 #define CLIENT_1 1
 #define ARP 2
 #define NUM_CLIENTS 3
-#define DRIVER_CH 3
+#define DRIVER 3
 #define NUM_BUFFERS 512
 #define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
@@ -101,8 +101,15 @@ void process_tx_ready(void)
     uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
     uint64_t old_enqueued = enqueued;
+    bool driver_ntfn = false;
     int err;
 
+    /* 
+        We should negate the need for a notification inside this loop, 
+        but given we loop around each client at a time, this would not change anything
+        and it is an unecessary cost to loop through and change them before
+        and after this function. As a quick hack this is instead in the notified function. 
+    */
     while(!ring_full(state.tx_ring_drv.used_ring)) {
         old_enqueued = enqueued;
         // round robin over each client.
@@ -123,15 +130,26 @@ void process_tx_ready(void)
 
                 enqueued += 1;
             }
+
+            if (state.tx_ring_clients[client].free_ring->notify_reader) {
+                /* If any of the clients are requesting a notification, 
+                    then ensure the driver notifies mux when transmit is finished
+                    so it can notify the client. */
+                driver_ntfn = true;
+            }
         }
 
         // we haven't processed any packets since last loop, exit.
         if (old_enqueued == enqueued) break;
     }
 
-    if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
-        sel4cp_notify_delayed(DRIVER_CH);
+    if (state.tx_ring_drv.used_ring->notify_reader) {
+        sel4cp_notify_delayed(DRIVER);
     }
+
+    /* Ensure we get a notification when transmit is complete
+      so we can dequeue free buffers and return them to the client. */
+    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 /*
@@ -143,6 +161,7 @@ void process_tx_complete(void)
 {
     // bitmap stores whether which clients need notifying.
     bool notify_clients[NUM_CLIENTS] = {false};
+    bool driver_ntfn = false;
 
     while (!ring_empty(state.tx_ring_drv.free_ring)) {
         uintptr_t addr;
@@ -154,13 +173,15 @@ void process_tx_complete(void)
         assert(virt);
 
         int client = get_client(virt);
-        int was_empty = ring_empty(state.tx_ring_clients[client].free_ring);
-
         err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
         assert(!err);
 
-        if (was_empty) {
+        if (state.tx_ring_clients[client].free_ring->notify_reader) {
             notify_clients[client] = true;
+            /* If any of the clients are requesting a notification, 
+                then ensure the driver notifies tx mux so we can notify 
+                the client. */
+            driver_ntfn = true;
         }
     }
 
@@ -170,12 +191,15 @@ void process_tx_complete(void)
             sel4cp_notify(client);
         }
     }
+    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 void notified(sel4cp_channel ch)
 {
+    state.tx_ring_clients[0].used_ring->notify_reader = false;
     process_tx_complete();
     process_tx_ready();
+    state.tx_ring_clients[0].used_ring->notify_reader = true;
 }
 
 void init(void)
@@ -206,7 +230,11 @@ void init(void)
         assert(!err);
     }
 
-    // print("Mux tx init complete\n");
+    // We are higher priority than the clients, so we always need to be notified
+    // when a used buffer becomes available to be sent. 
+    state.tx_ring_clients[0].used_ring->notify_reader = true;
+    state.tx_ring_clients[1].used_ring->notify_reader = true;
+    state.tx_ring_clients[2].used_ring->notify_reader = true;
 
     return;
 }

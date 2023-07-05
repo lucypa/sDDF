@@ -40,7 +40,6 @@ typedef struct state {
 
 state_t state;
 uint64_t dropped = 0;
-bool rx_free_was_empty = false;
 
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
@@ -116,12 +115,14 @@ int get_client(uintptr_t dma_vaddr) {
 void process_rx_complete(void)
 {
     bool notify_clients[NUM_CLIENTS] = {false};
-
     /* To avoid notifying the driver twice, used this global variable to 
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
-    rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
+    bool rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
+
+    /* We don't need a notification from the driver... */
+    state.rx_ring_drv.used_ring->notify_reader = false;
 
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
@@ -137,8 +138,6 @@ void process_rx_complete(void)
             puthex64(addr);
             print("\n");
         }
-
-        /* Can't do this one from user space unfortunately */
         err = seL4_ARM_VSpace_Invalidate_Data(3, vaddr, vaddr + ETHER_MTU);
         if (err) {
             print("MUX RX|ERROR: ARM Vspace invalidate failed\n");
@@ -150,14 +149,20 @@ void process_rx_complete(void)
         int client = get_client(vaddr);
         if (client >= 0 && !ring_full(state.rx_ring_clients[client].used_ring)) {
             /* enqueue it. */
-            int was_empty = ring_empty(state.rx_ring_clients[client].used_ring);
             int err = enqueue_used(&state.rx_ring_clients[client], vaddr, len, cookie);
             if (err) {
                 print("MUX RX|ERROR: failed to enqueue onto used ring\n");
             }
 
-            if (was_empty) {
+            if (state.rx_ring_clients[client].used_ring->notify_reader) {
                 notify_clients[client] = true;
+            }
+
+            if (rx_free_was_empty) {
+                // ask the client to notify when done.
+                state.rx_ring_clients[client].free_ring->notify_reader = true;
+            } else {
+                state.rx_ring_clients[client].free_ring->notify_reader = false;
             }
         } else {
             // either the packet is not for us, or the client queue is full.
@@ -186,10 +191,9 @@ bool process_rx_free(void)
      * notify it only once.
      */
     uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
-    uint64_t enqueued = 0;
+    bool enqueued = false;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        // state.rx_free_clients[i].free_ring.notify_consumer = false;
-        while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
+        while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
             uintptr_t addr;
             unsigned int len;
             void *buffer;
@@ -205,13 +209,8 @@ bool process_rx_free(void)
 
             err = enqueue_free(&state.rx_ring_drv, paddr, len, buffer);
             assert(!err);
-            enqueued += 1;
+            enqueued = true;
         }
-        
-        // ensure we got notified for next time.
-        /*if (ring_empty(state.rx_ring_drv.free_ring)) {
-            state.rx_free_clients[i].free_ring.notify_consumer = true;
-        }*/
     }
 
     /* We only want to notify the driver if the queue either was empty, or
@@ -222,41 +221,20 @@ bool process_rx_free(void)
        We also could have enqueued packets into the free ring during 
        process_rx_complete(), so we could have also missed this empty condition.
        */
-    if (((original_size == 0 || 
-            original_size + enqueued != ring_size(state.rx_ring_drv.free_ring))
-            && enqueued != 0) ||
-            (dropped != 0 && rx_free_was_empty)) {
+    if ((enqueued || dropped) && state.rx_ring_drv.free_ring->notify_reader) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
     return enqueued;
 }
 
-seL4_MessageInfo_t
-protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
-{
-    if (ch >= NUM_CLIENTS) {
-        sel4cp_dbg_puts("Received ppc on unexpected channel ");
-        puthex64(ch);
-        return sel4cp_msginfo_new(0, 0);
-    }
-    // return the MAC address.
-    uint32_t lower = (state.mac_addrs[ch][0] << 24) |
-                     (state.mac_addrs[ch][1] << 16) |
-                     (state.mac_addrs[ch][2] << 8) |
-                     (state.mac_addrs[ch][3]);
-    uint32_t upper = (state.mac_addrs[ch][4] << 24) | (state.mac_addrs[ch][5] << 16);
-    sel4cp_dbg_puts("Mux rx is sending mac: ");
-    dump_mac(state.mac_addrs[ch]);
-    sel4cp_mr_set(0, lower);
-    sel4cp_mr_set(1, upper);
-    return sel4cp_msginfo_new(0, 2);
-}
-
 void notified(sel4cp_channel ch)
 {
     process_rx_complete();
     process_rx_free();
+
+    // Ensure we get notified next time a packet comes in. 
+    state.rx_ring_drv.used_ring->notify_reader = true;
 }
 
 void init(void)
@@ -306,12 +284,10 @@ void init(void)
         int err = enqueue_free(&state.rx_ring_drv, addr, BUF_SIZE, NULL);
         assert(!err);
     }
-
-    // Notify the driver that we are ready to receive. 
+    // ensure we get a notification when a packet comes in
+    state.rx_ring_drv.used_ring->notify_reader = true;
+    // Notify the driver that we are ready to receive
     sel4cp_notify(DRIVER_CH);
-
-    // print("Mux rx init complete\n");
 
     return;
 }
-

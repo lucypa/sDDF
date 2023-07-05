@@ -16,7 +16,7 @@
 
 /* Buffer descriptor */
 typedef struct buff_desc {
-    uintptr_t addr; /* encoded dma addresses */
+    uintptr_t encoded_addr; /* encoded dma addresses */
     unsigned int len; /* associated memory lengths */
     void *cookie; /* index into client side metadata */
 } buff_desc_t;
@@ -25,6 +25,8 @@ typedef struct buff_desc {
 typedef struct ring_buffer {
     uint32_t write_idx;
     uint32_t read_idx;
+    bool notify_writer;
+    bool notify_reader;
     buff_desc_t buffers[SIZE];
 } ring_buffer_t;
 
@@ -93,7 +95,7 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
         return -1;
     }
 
-    ring->buffers[ring->write_idx % SIZE].addr = buffer;
+    ring->buffers[ring->write_idx % SIZE].encoded_addr = buffer;
     ring->buffers[ring->write_idx % SIZE].len = len;
     ring->buffers[ring->write_idx % SIZE].cookie = cookie;
 
@@ -119,9 +121,9 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    assert(ring->buffers[ring->read_idx % SIZE].addr != 0);
+    assert(ring->buffers[ring->read_idx % SIZE].encoded_addr != 0);
 
-    *addr = ring->buffers[ring->read_idx % SIZE].addr;
+    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
     *cookie = ring->buffers[ring->read_idx % SIZE].cookie;
 
@@ -213,7 +215,7 @@ static int driver_dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    *addr = ring->buffers[ring->read_idx % SIZE].addr;
+    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
     *len = ring->buffers[ring->read_idx % SIZE].len;
     *cookie = &ring->buffers[ring->read_idx % SIZE];
 

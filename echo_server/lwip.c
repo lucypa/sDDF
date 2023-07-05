@@ -93,18 +93,38 @@ dump_mac(uint8_t *mac)
     putC('\n');
 }
 
+static inline void
+request_used_ntfn(ring_handle_t *ring)
+{
+    ring->used_ring->notify_reader = true;
+}
+
+static inline void
+cancel_used_ntfn(ring_handle_t *ring)
+{
+    ring->used_ring->notify_reader = false;
+}
+
+static inline void
+request_free_ntfn(ring_handle_t *ring)
+{
+    ring->free_ring->notify_reader = true;
+}
+
+static inline void
+cancel_free_ntfn(ring_handle_t *ring)
+{
+    ring->free_ring->notify_reader = false;
+}
+
 static inline void return_buffer(uintptr_t addr)
 {
     /* As the rx_free ring is the size of the number of buffers we have,
     the ring should never be full. 
     FIXME: This full condition could change... */
-    bool was_empty = ring_empty(state.rx_ring.free_ring);
     int err = enqueue_free(&(state.rx_ring), addr, BUF_SIZE, NULL);
     assert(!err);
-    if (was_empty) {
-        notify_rx = true;
-        // sel4cp_notify_delayed(RX_CH);
-    }
+    notify_rx = true;
 }
 
 /**
@@ -140,7 +160,6 @@ create_interface_buffer(state_t *state, uintptr_t buffer, size_t length)
 {
     lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *) LWIP_MEMPOOL_ALLOC(RX_POOL);
 
-    // custom_pbuf->state = state;
     custom_pbuf->buffer = buffer;
     custom_pbuf->custom.custom_free_function = interface_free_buffer;
 
@@ -251,12 +270,6 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
-    if (err) {
-        print("LWIP|ERROR: ARM VSpace clean failed: ");
-        puthex64(err);
-        print("\n");
-    }*/
     cleanCache(frame, frame + copied);
 
     /* insert into the used tx queue */
@@ -270,7 +283,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     /* Notify the server for next time we recv() */
     notify_tx = true;
-    // sel4cp_notify(TX_CH);
+
     return ret;
 }
 
@@ -332,6 +345,7 @@ process_tx_queue(void)
 void
 process_rx_queue(void)
 {
+    cancel_used_ntfn(&state.rx_ring);
     while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -347,6 +361,7 @@ process_rx_queue(void)
             pbuf_free(p);
         }
     }
+    request_used_ntfn(&state.rx_ring);
 }
 
 /**
@@ -478,6 +493,23 @@ void init(void)
     setup_udp_socket();
     setup_utilization_socket();
 
+    request_used_ntfn(&state.rx_ring);
+    request_used_ntfn(&state.tx_ring);
+
+    if (notify_rx && state.rx_ring.free_ring->notify_reader) {
+        notify_rx = false;
+        sel4cp_notify_delayed(RX_CH);
+    }
+
+    if (notify_tx && state.tx_ring.used_ring->notify_reader) {
+        notify_tx = false;
+        if (!have_signal) {
+            sel4cp_notify_delayed(TX_CH);
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH) {
+            sel4cp_notify(TX_CH);
+        }
+    }
+
     print(sel4cp_name);
     print(": elf PD init complete\n");
 }
@@ -508,11 +540,13 @@ void notified(sel4cp_channel ch)
             assert(0);
             break;
     }
-    if (notify_rx) {
+    
+    if (notify_rx && state.rx_ring.free_ring->notify_reader) {
         notify_rx = false;
         sel4cp_notify_delayed(RX_CH);
     }
-    if (notify_tx) {
+
+    if (notify_tx && state.tx_ring.used_ring->notify_reader) {
         notify_tx = false;
         if (!have_signal) {
             sel4cp_notify_delayed(TX_CH);

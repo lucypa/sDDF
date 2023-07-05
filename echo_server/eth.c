@@ -38,38 +38,8 @@ uintptr_t uart_base;
 _Static_assert((RX_COUNT + TX_COUNT) * 2 * PACKET_BUFFER_SIZE <= 0x200000, "Expect rx+tx buffers to fit in single 2MB page");
 _Static_assert(sizeof(ring_buffer_t) <= 0x200000, "Expect ring buffer ring to fit in single 2MB page");
 
-struct descriptor {
-    uint16_t len;
-    uint16_t stat;
-    uint32_t addr;
-};
-
-/*
- * Housekeeping for NIC ring buffers.
- * Ring empty = (tail == head)
- * Ring full = (remain == 0)
- * Invariants: 0 <= tail < cnt
- *             0 <= head < cnt
- *             0 <= remain < cnt - 1
- *             remain = (tail - head - 2) % cnt
- *             (tail - head) % cnt >= 2
- *             descr[head] through desc[tail]
- *                   are ready to be or have been used for DMA
- *             descr[(tail + 1) % cnt] through descr[(head - 1) % cnt]
- *                   are unused.
- */
-typedef struct {
-    unsigned int cnt;  /* Number of slots in NIC's ring */
-    unsigned int remain; /* number of slots without buffers */
-    unsigned int tail;   /* Next slot to be given a buffer */
-    unsigned int head;   /* (probably) next slot to be filled by DMA */
-    volatile struct descriptor *descr; /* pointer to NIC's ringbuffer */
-    void **cookies;     /* For client to use */
-} ring_ctx_t;
-
 ring_ctx_t rx; /* Rx NIC ring */
 ring_ctx_t tx; /* Tx NIC ring */
-unsigned int tx_lengths[TX_COUNT];
 
 /* Pointers to shared_ringbuffers */
 ring_handle_t rx_ring;
@@ -155,11 +125,11 @@ alloc_rx_buf(size_t buf_size, void **cookie)
     return addr;
 }
 
-static void fill_rx_bufs(void)
+static void
+fill_rx_bufs(void)
 {
     ring_ctx_t *ring = &rx;
-    __sync_synchronize();
-    while (ring->remain > 0) {
+    while (!hw_ring_full(ring)) {
         /* request a buffer */
         void *cookie = NULL;
         uintptr_t phys = alloc_rx_buf(MAX_PACKET_SIZE, &cookie);
@@ -167,27 +137,28 @@ static void fill_rx_bufs(void)
             break;
         }
         uint16_t stat = RXD_EMPTY;
-        int idx = ring->tail;
-        int new_tail = idx + 1;
-        if (new_tail == ring->cnt) {
-            new_tail = 0;
+        int idx = ring->write;
+        int new_write = idx + 1;
+        if (new_write == ring->cnt) {
+            new_write = 0;
             stat |= WRAP;
         }
         ring->cookies[idx] = cookie;
         update_ring_slot(ring, idx, phys, 0, stat);
-        ring->tail = new_tail;
-        /* There is a race condition if add/remove is not synchronized. */
-        ring->remain--;
-    }
-    __sync_synchronize();
 
-    if (ring->tail != ring->head) {
+        THREAD_MEMORY_RELEASE();
+        ring->write = new_write;
+    }
+
+    if (!(hw_ring_empty(ring))) {
         /* Make sure rx is enabled */
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
             enable_irqs(eth, IRQ_MASK);
+        rx_ring.free_ring->notify_reader = false;
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        rx_ring.free_ring->notify_reader = true;
     }
 }
 
@@ -195,9 +166,9 @@ static void
 handle_rx(volatile struct enet_regs *eth)
 {
     ring_ctx_t *ring = &rx;
-    unsigned int head = ring->head;
     int num = 0;
-    int was_empty = ring_empty(rx_ring.used_ring);
+    unsigned int read = ring->read;
+    int og_size = ring_size(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
@@ -206,16 +177,17 @@ handle_rx(volatile struct enet_regs *eth)
          * so disable Rx irqs.
          */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        rx_ring.used_ring->notify_writer = true;
         return;
     }
+
     /*
      * Dequeue until either:
      *   we run out of filled buffers in the NIC ring
      *   we run out of slots in the upstream Rx ring.
      */
-    while (head != ring->tail && !ring_full(rx_ring.used_ring)) {
-        volatile struct descriptor *d = &(ring->descr[head]);
-
+    while (!hw_ring_empty(ring) && !ring_full(rx_ring.used_ring)) {
+        volatile struct descriptor *d = &(ring->descr[read]);
         /*
          * If a slot is still marked as empty we are done.
          * Still need to signal upstream if
@@ -225,18 +197,16 @@ handle_rx(volatile struct enet_regs *eth)
             break;
         }
 
-        void *cookie = ring->cookies[head];
+        void *cookie = ring->cookies[read];
         /* Go to next buffer, handle roll-over. */
-        if (++head == ring->cnt) {
-            head = 0;
+        if (++read == ring->cnt) {
+            read = 0;
         }
-        ring->head = head;
-
-        /* There is a race condition here if add/remove is not synchronized. */
-        ring->remain++;
+        THREAD_MEMORY_RELEASE();
+        ring->read = read;
 
         buff_desc_t *desc = (buff_desc_t *)cookie;
-        int err = enqueue_used(&rx_ring, desc->addr, d->len, desc->cookie);
+        int err = enqueue_used(&rx_ring, desc->encoded_addr, d->len, desc->cookie);
         if (err) {
             print("ETH|ERROR: Failed to enqueue to RX used ring\n");
         }
@@ -249,60 +219,37 @@ handle_rx(volatile struct enet_regs *eth)
      * Driver runs at highest priority, so buffers will be refilled
      * by caller before the notify causes a context switch.
      */
-    if (num && was_empty) {
+    if (num && rx_ring.used_ring->notify_reader) {
         sel4cp_notify(RX_CH);
     }
 }
 
 static void
-raw_tx(volatile struct enet_regs *eth, unsigned int num, uintptr_t *phys,
-                  unsigned int *len, void *cookie)
+raw_tx(volatile struct enet_regs *eth, uintptr_t phys,
+                  unsigned int len, void *cookie)
 {
     ring_ctx_t *ring = &tx;
 
-    /* Ensure we have room */
-    if (ring->remain < num) {
-        /* not enough room, try to complete some and check again */
-        complete_tx(eth);
-        unsigned int rem = ring->remain;
-        if (rem < num) {
-            print("TX queue lacks space");
-            return;
-        }
+    unsigned int write = ring->write;
+    unsigned int write_new = write;
+
+    uint16_t stat = TXD_READY | TXD_ADDCRC | TXD_LAST;
+
+    unsigned int idx = write_new;
+    if (++write_new == TX_COUNT) {
+        write_new = 0;
+        stat |= WRAP;
     }
+    update_ring_slot(ring, idx, phys, len, stat);
 
-    __sync_synchronize();
+    ring->cookies[write] = cookie;
 
-    unsigned int tail = ring->tail;
-    unsigned int tail_new = tail;
-
-    unsigned int i = num;
-    while (i-- > 0) {
-        uint16_t stat = TXD_READY;
-        if (0 == i) {
-            stat |= TXD_ADDCRC | TXD_LAST;
-        }
-
-        unsigned int idx = tail_new;
-        if (++tail_new == TX_COUNT) {
-            tail_new = 0;
-            stat |= WRAP;
-        }
-        update_ring_slot(ring, idx, *phys++, *len++, stat);
-    }
-
-    ring->cookies[tail] = cookie;
-    tx_lengths[tail] = num;
-    ring->tail = tail_new;
-    /* There is a race condition here if add/remove is not synchronized. */
-    ring->remain -= num;
-
-    __sync_synchronize();
+    THREAD_MEMORY_RELEASE();
+    ring->write = write_new;
 
     if (!(eth->tdar & TDAR_TDAR)) {
         eth->tdar = TDAR_TDAR;
     }
-
 }
 
 static void
@@ -312,79 +259,43 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
-    while ((tx.remain > 1) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        raw_tx(eth, 1, &buffer, &len, cookie);
+    while (!(hw_ring_full(&tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+        raw_tx(eth, buffer, len, cookie);
     }
 }
 
 static void
 complete_tx(volatile struct enet_regs *eth)
 {
-    unsigned int cnt_org;
     void *cookie;
     ring_ctx_t *ring = &tx;
-    unsigned int head = ring->head;
-    unsigned int cnt = 0;
+    unsigned int read = ring->read;
     int enqueued = 0;
 
-    int was_empty = ring_empty(tx_ring.free_ring);
-
-    while (head != ring->tail && !ring_full(tx_ring.free_ring)) {
-        if (0 == cnt) {
-            cnt = tx_lengths[head];
-            if ((0 == cnt) || (cnt > TX_COUNT)) {
-                /* We are not supposed to read 0 here. */
-                print("complete_tx with cnt=0 or max");
-                return;
-            }
-            cnt_org = cnt;
-            cookie = ring->cookies[head];
-        }
-
-        volatile struct descriptor *d = &(ring->descr[head]);
+    while (!hw_ring_empty(ring) && !ring_full(tx_ring.free_ring)) {
+        cookie = ring->cookies[read];
+        volatile struct descriptor *d = &(ring->descr[read]);
 
         /* If this buffer was not sent, we can't release any more buffers */
         if (d->stat & TXD_READY) {
-            /* give it another chance */
-            if (!(eth->tdar & TDAR_TDAR)) {
-                eth->tdar = TDAR_TDAR;
-            }
-            if (d->stat & TXD_READY) {
-                break;
-            }
+            break;
         }
-
         /* Go to next buffer, handle roll-over. */
-        if (++head == ring->cnt) {
-            head = 0;
+        if (++read == ring->cnt) {
+            read = 0;
         }
 
-        if (0 == --cnt) {
-            ring->head = head;
-            /* race condition if add/remove is not synchronized. */
-            ring->remain += cnt_org;
-            /* give the buffer back */
-            buff_desc_t *desc = (buff_desc_t *)cookie;
-            int err = enqueue_free(&tx_ring, desc->addr, desc->len, desc->cookie);
-            assert(!err);
-            enqueued++;
-        }
+        THREAD_MEMORY_RELEASE();
+        ring->read = read;
+        /* give the buffer back */
+        buff_desc_t *desc = (buff_desc_t *)cookie;
+        int err = enqueue_free(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+        assert(!err);
+        enqueued++;
     }
 
-    if (!ring_empty(tx_ring.used_ring)) {
-        handle_tx(eth);
-    }
-
-    if (was_empty && enqueued) {
+    if (tx_ring.free_ring->notify_reader && enqueued) {
         sel4cp_notify(TX_CH);
-    }
-
-    /* The only reason to arrive here is when head equals tails. If cnt is not
-     * zero, then there is some kind of overflow or data corruption. The number
-     * of tx descriptors holding data can't exceed the space in the ring.
-     */
-    if (0 != cnt && ring->head == ring->tail) {
-        print("head reached tail, but cnt!= 0");
     }
 }
 
@@ -422,16 +333,14 @@ eth_setup(void)
 
     /* set up descriptor rings */
     rx.cnt = RX_COUNT;
-    rx.remain = rx.cnt - 2;
-    rx.tail = 0;
-    rx.head = 0;
+    rx.write = 0;
+    rx.read = 0;
     rx.cookies = (void **)rx_cookies;
     rx.descr = (volatile struct descriptor *)hw_ring_buffer_vaddr;
 
     tx.cnt = TX_COUNT;
-    tx.remain = tx.cnt - 2;
-    tx.tail = 0;
-    tx.head = 0;
+    tx.write = 0;
+    tx.read = 0;
     tx.cookies = (void **)tx_cookies;
     tx.descr = (volatile struct descriptor *)(hw_ring_buffer_vaddr + (sizeof(struct descriptor) * RX_COUNT));
 
@@ -516,7 +425,9 @@ void init(void)
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
-    /* Now wait for notification that buffers are initialised */
+    tx_ring.used_ring->notify_reader = true;
+    // check if we have any requests to transmit.
+    handle_tx(eth);
 }
 
 seL4_MessageInfo_t
@@ -534,7 +445,8 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     return sel4cp_msginfo_new(0, 0);
 }
 
-void notified(sel4cp_channel ch)
+void
+notified(sel4cp_channel ch)
 {
     switch(ch) {
         case IRQ_CH:
