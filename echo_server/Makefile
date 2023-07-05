@@ -23,7 +23,7 @@ $(error SEL4CP_CONFIG must be specified)
 endif
 
 ifeq ($(strip $(TOOLCHAIN)),)
-	TOOLCHAIN := aarch64-unknown-linux-gnu
+	TOOLCHAIN := aarch64-none-elf
 endif
 
 CPU := cortex-a53
