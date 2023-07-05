@@ -150,7 +150,49 @@
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
         </protection_domain>
 
-        <protection_domain name="copy1" priority="95" budget="20000" id="5" cpu="1">
+        <protection_domain name="client0" priority="97" budget="20000" id="5" cpu="3">
+            <program_image path="lwip.elf" />
+            <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+
+            <!-- shared memory for ring buffer mechanism -->
+            <map mr="rx_free_cli0" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
+            <map mr="rx_used_cli0" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
+            <map mr="tx_free_cli0" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
+            <map mr="tx_used_cli0" vaddr="0x3_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
+
+            <map mr="shared_dma_rx_cli0" vaddr="0x2_800_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
+            <map mr="shared_dma_tx_cli0" vaddr="0x2_600_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
+            <map mr="data_packet" vaddr="0x5_014_000" perms="rw" cached="true" setvar_vaddr="data_packet" />
+
+            <!-- shared memory used for benchmarking -->
+            <map mr="cyclecounters0" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+            <map mr="cyclecounters1" vaddr="0x5_011_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+            <map mr="cyclecounters2" vaddr="0x5_012_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+            <map mr="cyclecounters3" vaddr="0x5_013_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
+        </protection_domain>
+
+        <protection_domain name="arp" priority="98" budget="20000" pp="true" id="8" cpu="3">
+            <program_image path="arp.elf" />
+            <!-- shared memory for arp/rx_mux ring buffer mechanism -->
+            <map mr="rx_free_arp" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
+            <map mr="rx_used_arp" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
+
+            <!-- shared memory for arp/tx_mux ring buffer mechanism -->
+            <map mr="tx_free_arp" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
+            <map mr="tx_used_arp" vaddr="0x5_400_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
+
+            <map mr="shared_dma_tx_arp" vaddr="0x2_200_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
+            <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="r" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
+            <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
+        </protection_domain>
+
+        <protection_domain name="timer" priority="101" pp="true" id="9" cpu="3" passive="true">
+            <program_image path="timer.elf" />
+            <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
+            <irq irq="87" id="0" /> <!-- timer interrupt -->
+        </protection_domain>
+
+        <!--<protection_domain name="copy1" priority="95" budget="20000" id="5" cpu="1">
             <program_image path="copy.elf" />
             <map mr="shared_dma_rx_cli1" vaddr="0x2_200_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_cli" />
             <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="r" cached="true" setvar_vaddr="shared_dma_vaddr_mux" />
@@ -162,7 +204,7 @@
             <map mr="rx_used_cli1" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used_cli" />
 
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        </protection_domain>
+        </protection_domain>-->
     </protection_domain>
 
     <protection_domain name="bench2" priority="103" cpu="2">
@@ -193,7 +235,7 @@
             <setvar symbol="shared_dma_paddr_cli1" region_paddr="shared_dma_tx_cli1" />
         </protection_domain>
 
-        <protection_domain name="eth2" priority="102" id="2" cpu="2" pp="true" passive="true">
+        <protection_domain name="eth2" priority="102" id="2" cpu="2" pp="true">
             <program_image path="eth2.elf" />
             <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
 
@@ -214,33 +256,12 @@
         <program_image path="benchmark.elf" />
         <!--<map mr="log_buffer" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="log_buffer" /> -->
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-
-        <protection_domain name="client0" priority="97" budget="20000" id="6" cpu="3">
+    
+        <!--<protection_domain name="client1" priority="97" budget="20000" id="7" cpu="3">
             <program_image path="lwip.elf" />
             <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
 
-            <!-- shared memory for ring buffer mechanism -->
-            <map mr="rx_free_cli0" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
-            <map mr="rx_used_cli0" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
-            <map mr="tx_free_cli0" vaddr="0x3_400_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
-            <map mr="tx_used_cli0" vaddr="0x3_600_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
-
-            <map mr="shared_dma_rx_cli0" vaddr="0x2_800_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
-            <map mr="shared_dma_tx_cli0" vaddr="0x2_600_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
-            <map mr="data_packet" vaddr="0x5_014_000" perms="rw" cached="true" setvar_vaddr="data_packet" />
-
-            <!-- shared memory used for benchmarking -->
-            <map mr="cyclecounters0" vaddr="0x5_010_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
-            <map mr="cyclecounters1" vaddr="0x5_011_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
-            <map mr="cyclecounters2" vaddr="0x5_012_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
-            <map mr="cyclecounters3" vaddr="0x5_013_000" perms="rw" cached="true" setvar_vaddr="cyclecounters_vaddr" />
-        </protection_domain>
-
-        <protection_domain name="client1" priority="97" budget="20000" id="7" cpu="3">
-            <program_image path="lwip.elf" />
-            <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-
-            <!-- shared memory for ring buffer mechanism -->
+            shared memory for ring buffer mechanism
             <map mr="rx_free_cli1" vaddr="0x4_000_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
             <map mr="rx_used_cli1" vaddr="0x4_200_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
             <map mr="tx_free_cli1" vaddr="0x3_000_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
@@ -249,28 +270,8 @@
             <map mr="shared_dma_rx_cli1" vaddr="0x2_200_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
             <map mr="shared_dma_tx_cli1" vaddr="0x2_000_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
             <map mr="data_packet" vaddr="0x5_011_000" perms="rw" cached="true" setvar_vaddr="data_packet" />
-        </protection_domain>
+        </protection_domain>-->
 
-        <protection_domain name="arp" priority="98" budget="20000" pp="true" id="8" cpu="3">
-            <program_image path="arp.elf" />
-            <!-- shared memory for arp/rx_mux ring buffer mechanism -->
-            <map mr="rx_free_arp" vaddr="0x4_400_000" perms="rw" cached="true" setvar_vaddr="rx_free" />
-            <map mr="rx_used_arp" vaddr="0x4_600_000" perms="rw" cached="true" setvar_vaddr="rx_used" />
-
-            <!-- shared memory for arp/tx_mux ring buffer mechanism -->
-            <map mr="tx_free_arp" vaddr="0x5_200_000" perms="rw" cached="true" setvar_vaddr="tx_free" />
-            <map mr="tx_used_arp" vaddr="0x5_400_000" perms="rw" cached="true" setvar_vaddr="tx_used" />
-
-            <map mr="shared_dma_tx_arp" vaddr="0x2_200_000" perms="rw" cached="true" setvar_vaddr="shared_dma_vaddr_tx" />
-            <map mr="shared_dma_rx" vaddr="0x2_400_000" perms="r" cached="true" setvar_vaddr="shared_dma_vaddr_rx" />
-            <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        </protection_domain>
-
-        <protection_domain name="timer" priority="101" pp="true" id="9" cpu="3" passive="true">
-            <program_image path="timer.elf" />
-            <map mr="timer" vaddr="0x2_000_000" perms="rw" cached="false" setvar_vaddr="gpt_regs" />
-            <irq irq="87" id="0" /> <!-- timer interrupt -->
-        </protection_domain>
     </protection_domain>
 
     <channel>
@@ -283,10 +284,10 @@
         <end pd="copy0" id="0" />
     </channel>
 
-    <channel>
+    <!--<channel>
         <end pd="mux_rx" id="1" />
         <end pd="copy1" id="0" />
-    </channel>
+    </channel>-->
 
     <channel>
         <end pd="mux_rx" id="2" />
@@ -298,10 +299,10 @@
         <end pd="client0" id="2" />
     </channel>
 
-    <channel>
+    <!--<channel>
         <end pd="copy1" id="1" />
         <end pd="client1" id="2" />
-    </channel>
+    </channel>-->
 
     <channel>
         <end pd="mux_tx" id="3" />
@@ -313,10 +314,10 @@
         <end pd="client0" id="3" />
     </channel>
 
-    <channel>
+    <!--<channel>
         <end pd="mux_tx" id="1" />
         <end pd="client1" id="3" />
-    </channel>
+    </channel>-->
 
     <channel>
         <end pd="mux_tx" id="2" />
@@ -358,20 +359,20 @@
         <end pd="client0" id="7" />
     </channel>
 
-    <channel>
+    <!--<channel>
         <end pd="arp" id="3" />
         <end pd="client1" id="7" />
-    </channel>
+    </channel>-->
 
     <channel>
         <end pd="timer" id="1" />
         <end pd="client0" id="1" />
     </channel>
 
-    <channel>
+    <!--<channel>
         <end pd="timer" id="2" />
         <end pd="client1" id="1" />
-    </channel>
+    </channel>-->
 
     <channel>
         <end pd="bench" id="7"/>

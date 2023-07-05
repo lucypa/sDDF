@@ -68,9 +68,9 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_0_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
+    // seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_0_ID);
+    //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP_ID);
+    //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -104,9 +104,9 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
 {
     print("Utilisation details for PD: ");
     switch (pd_id) {
-        case PD_CLIENT_0_ID: print("CLIENT_0"); break;
-        case PD_ARP_ID: print("ARP"); break;
-        case PD_TIMER_ID: print("TIMER"); break;
+        case PD_CLIENT_0_ID: print("CORE3"); break;
+        //case PD_ARP_ID: print("ARP"); break;
+        //case PD_TIMER_ID: print("TIMER"); break;
     }
     print(" (");
     puthex64(pd_id);
@@ -193,9 +193,7 @@ void notified(sel4cp_channel ch)
 
             sel4bench_start_counters(benchmark_bf);
 
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
             sel4cp_benchmark_start();
-            #endif
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
             seL4_BenchmarkResetLog();
@@ -217,7 +215,6 @@ void notified(sel4cp_channel ch)
             }
             print("}\n");
 
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
             uint64_t total;
             uint64_t kernel;
             uint64_t entries;
@@ -226,15 +223,14 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
 
-            sel4cp_benchmark_stop_tcb(PD_CLIENT_0_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_CLIENT_0_ID, kernel, entries, number_schedules, total);
+            //sel4cp_benchmark_stop_tcb(PD_CLIENT_0_ID, &total, &number_schedules, &kernel, &entries);
+            //print_benchmark_details(PD_CLIENT_0_ID, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_ARP_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_ARP_ID, kernel, entries, number_schedules, total);
+            //sel4cp_benchmark_stop_tcb(PD_ARP_ID, &total, &number_schedules, &kernel, &entries);
+            //print_benchmark_details(PD_ARP_ID, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);
-            #endif
+            //sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
+            //print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
             entries = seL4_BenchmarkFinalizeLog();

@@ -179,9 +179,9 @@ void init(void)
 {
     /* Set up shared memory regions */
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, NULL, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, NULL, 0);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, NULL, 0);
+    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, 0);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 0);
 
     /* Set up the map of client ids in order of their priority. 
      * Ie client_priority_order[0] is the id of the client with highest priority. 

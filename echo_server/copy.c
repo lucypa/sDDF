@@ -25,10 +25,8 @@ ring_handle_t rx_ring_cli;
 
 void process_rx_complete(void)
 {
-    bool mux_was_full = ring_full(rx_ring_mux.used_ring);
-    uint64_t mux_free_original_size = ring_size(rx_ring_mux.free_ring);
-    bool cli_used_size = ring_size(rx_ring_cli.used_ring);
     uint64_t enqueued = 0;
+    rx_ring_mux.used_ring->notify_reader = false;
     // We only want to copy buffers if all the dequeues and enqueues will be successful
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.free_ring) &&
@@ -80,28 +78,31 @@ void process_rx_complete(void)
         enqueued += 1;
     }
 
-    if ((cli_used_size == 0 ||
-            cli_used_size + enqueued != ring_size(rx_ring_cli.used_ring)) 
-            && enqueued) {
+    if (rx_ring_cli.used_ring->notify_reader && enqueued) {
         sel4cp_notify_delayed(CLIENT_CH);
     }
 
-    /* We only want to signal the mux if the free queue was
-        empty and we enqueued something, or that the used queue was full and 
-        we dequeued something, OR 
-        potentially the mux pre-empted us (as it's higher prio) and emptied the queue
-        while we were enqueuing, and thus the OG size and number of packets we 
-        processed doesn't add up and the mux could potentially miss this 
-        empty -> non-empty transition. */
-    if ((mux_free_original_size == 0 || mux_was_full || 
-            mux_free_original_size + enqueued != ring_size(rx_ring_mux.free_ring)) 
-            && enqueued) {
+    /* We want to inform the mux that more free buffers are available or the 
+        used ring can now be refilled */
+    if (enqueued && (rx_ring_mux.free_ring->notify_reader || rx_ring_mux.used_ring->notify_writer)) {
         if (have_signal) {
             // We need to notify the client, but this should
             // happen first. 
             sel4cp_notify(CLIENT_CH);
         }
         sel4cp_notify_delayed(MUX_RX_CH);
+    }
+
+    if (ring_empty(rx_ring_cli.free_ring) && !ring_empty(rx_ring_mux.used_ring)) {
+        // we want to be notified when this changes so we can continue
+        // enqueuing packets to the client.
+        rx_ring_cli.free_ring->notify_writer = true;
+    } else {
+        rx_ring_cli.free_ring->notify_writer = false;
+    }
+
+    if (ring_empty(rx_ring_mux.used_ring)) {
+        rx_ring_mux.used_ring->notify_reader = true;
     }
 }
 
@@ -121,8 +122,9 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, NULL, 0);
-    ring_init(&rx_ring_cli, (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, NULL, 0);
-
+    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, 0);
+    ring_init(&rx_ring_cli, (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, 0);
+    // ensure we get notified when a packet comes in 
+    rx_ring_mux.used_ring->notify_reader = true;
     return;
 }

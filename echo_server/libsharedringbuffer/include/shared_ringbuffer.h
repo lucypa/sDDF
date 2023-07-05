@@ -14,9 +14,6 @@
 
 #define SIZE 512
 
-/* Function pointer to be used to 'notify' components on either end of the shared memory */
-typedef void (*notify_fn)(void);
-
 /* Buffer descriptor */
 typedef struct buff_desc {
     uintptr_t encoded_addr; /* encoded dma addresses */
@@ -28,6 +25,8 @@ typedef struct buff_desc {
 typedef struct ring_buffer {
     uint32_t write_idx;
     uint32_t read_idx;
+    bool notify_writer;
+    bool notify_reader;
     buff_desc_t buffers[SIZE];
 } ring_buffer_t;
 
@@ -35,8 +34,6 @@ typedef struct ring_buffer {
 typedef struct ring_handle {
     ring_buffer_t *free_ring;
     ring_buffer_t *used_ring;
-    /* Function to be used to signal that work is queued in the used_ring */
-    notify_fn notify;
 } ring_handle_t;
 
 /**
@@ -45,11 +42,10 @@ typedef struct ring_handle {
  * @param ring ring handle to use.
  * @param free pointer to free ring in shared memory.
  * @param used pointer to 'used' ring in shared memory.
- * @param notify function pointer used to notify the other user.
  * @param buffer_init 1 indicates the read and write indices in shared memory need to be initialised.
  *                    0 inidicates they do not. Only one side of the shared memory regions needs to do this.
  */
-void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, notify_fn notify, int buffer_init);
+void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, int buffer_init);
 
 /**
  * Check if the ring buffer is empty.
@@ -80,17 +76,6 @@ static inline int ring_size(ring_buffer_t *ring)
 {
     assert((ring->write_idx - ring->read_idx) >= 0);
     return (ring->write_idx - ring->read_idx);
-}
-
-/**
- * Notify the other user of changes to the shared ring buffers.
- *
- * @param ring the ring handle used.
- *
- */
-static inline void notify(ring_handle_t *ring)
-{
-    return ring->notify();
 }
 
 /**

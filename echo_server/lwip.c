@@ -93,18 +93,39 @@ dump_mac(uint8_t *mac)
     putC('\n');
 }
 
-static inline void return_buffer(uintptr_t addr)
+static inline void
+request_used_ntfn(ring_handle_t *ring)
+{
+    ring->used_ring->notify_reader = true;
+}
+
+static inline void
+cancel_used_ntfn(ring_handle_t *ring)
+{
+    ring->used_ring->notify_reader = false;
+}
+
+static inline void
+request_free_ntfn(ring_handle_t *ring)
+{
+    ring->free_ring->notify_reader = true;
+}
+
+static inline void
+cancel_free_ntfn(ring_handle_t *ring)
+{
+    ring->free_ring->notify_reader = false;
+}
+
+static inline
+void return_buffer(uintptr_t addr)
 {
     /* As the rx_free ring is the size of the number of buffers we have,
     the ring should never be full. 
     FIXME: This full condition could change... */
-    bool was_empty = ring_empty(state.rx_ring.free_ring);
     int err = enqueue_free(&(state.rx_ring), addr, BUF_SIZE, NULL);
     assert(!err);
-    if (was_empty) {
-        notify_rx = true;
-        // sel4cp_notify_delayed(RX_CH);
-    }
+    notify_rx = true;
 }
 
 /**
@@ -218,7 +239,6 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     /* Grab an free TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
     int err;
-
     if (p->tot_len > BUF_SIZE) {
         print("LWIP|ERROR: lwip_eth_send total length > BUF SIZE\n");
         return ERR_MEM;
@@ -226,6 +246,8 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     if (ring_full(state.tx_ring.used_ring)) {
         enqueue_pbufs(p);
+        // ensure we get a notification once this queue has been emptied.
+        request_used_ntfn(&state.tx_ring);
         return ERR_OK;
     }
 
@@ -233,6 +255,8 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     uintptr_t buffer = alloc_tx_buffer(p->tot_len);
     if (buffer == NULL) {
         enqueue_pbufs(p);
+        // ensure we get a notification when more buffers are available.
+        request_free_ntfn(&state.tx_ring);
         return ERR_OK;
     }
 
@@ -250,14 +274,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
-    if (err) {
-        print("LWIP|ERROR: ARM VSpace clean failed: ");
-        puthex64(err);
-        print("\n");
-    }*/
     cleanCache(frame, frame + copied);
-
 
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
@@ -270,7 +287,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     /* Notify the server for next time we recv() */
     notify_tx = true;
-    // sel4cp_notify(TX_CH);
+
     return ERR_OK;
 }
 
@@ -300,12 +317,6 @@ process_tx_queue(void)
             copied += curr->len;
         }
 
-        /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
-        if (err) {
-            print("LWIP|ERROR: ARM VSpace clean failed: ");
-            puthex64(err);
-            print("\n");
-        }*/
         cleanCache(frame, frame + copied);
 
         /* insert into the used tx queue */
@@ -317,7 +328,6 @@ process_tx_queue(void)
 
         /* Notify the server for next time we recv() */
         notify_tx = true;
-        // sel4cp_notify(TX_CH);
 
         /* free the pbufs. */
         temp = current;
@@ -327,11 +337,17 @@ process_tx_queue(void)
 
     // if curr != NULL, we need to make sure we don't lose it and can come back
     state.head = current;
+    if (state.head == NULL) {
+        // we got to the end of the list. No longer need notifications.
+        cancel_free_ntfn(&state.tx_ring);
+        cancel_used_ntfn(&state.tx_ring);
+    }
 }
 
 void
 process_rx_queue(void)
 {
+    cancel_used_ntfn(&state.rx_ring);
     while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -347,6 +363,7 @@ process_rx_queue(void)
             pbuf_free(p);
         }
     }
+    request_used_ntfn(&state.rx_ring);
 }
 
 /**
@@ -435,8 +452,8 @@ void init(void)
     print(": elf PD init function running\n");
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 1);
-    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 1);
+    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
     state.head = NULL;
     state.tail = NULL;
@@ -480,6 +497,23 @@ void init(void)
 
     setup_udp_socket();
     setup_utilization_socket();
+
+    request_used_ntfn(&state.rx_ring);
+    request_used_ntfn(&state.tx_ring);
+
+    if (notify_rx && state.rx_ring.free_ring->notify_reader) {
+        notify_rx = false;
+        sel4cp_notify_delayed(RX_CH);
+    }
+
+    if (notify_tx && state.tx_ring.used_ring->notify_reader) {
+        notify_tx = false;
+        if (!have_signal) {
+            sel4cp_notify_delayed(TX_CH);
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH) {
+            sel4cp_notify(TX_CH);
+        }
+    }
 }
 
 void notified(sel4cp_channel ch)
@@ -496,11 +530,9 @@ void notified(sel4cp_channel ch)
             break;
         case TX_CH:
             /*
-             * We stop processing the Rx ring if there are no
-             * Tx slots avilable.
-             * Resume here.
+             * Process any outstanding transmit packets
+             * that were waiting on free buffers. 
              */
-            // process_rx_queue();
             process_tx_queue();
             break;
         default:
@@ -508,11 +540,13 @@ void notified(sel4cp_channel ch)
             assert(0);
             break;
     }
-    if (notify_rx) {
+
+    if (notify_rx && state.rx_ring.free_ring->notify_reader) {
         notify_rx = false;
         sel4cp_notify_delayed(RX_CH);
     }
-    if (notify_tx) {
+
+    if (notify_tx && state.tx_ring.used_ring->notify_reader) {
         notify_tx = false;
         if (!have_signal) {
             sel4cp_notify_delayed(TX_CH);

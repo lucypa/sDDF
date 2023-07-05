@@ -40,7 +40,6 @@ typedef struct state {
 
 state_t state;
 uint64_t dropped = 0;
-bool rx_free_was_empty = false;
 
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
@@ -116,12 +115,14 @@ int get_client(uintptr_t dma_vaddr) {
 void process_rx_complete(void)
 {
     bool notify_clients[NUM_CLIENTS] = {false};
-
     /* To avoid notifying the driver twice, used this global variable to 
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
-    rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
+    bool rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
+
+    /* We don't need a notification from the driver... */
+    state.rx_ring_drv.used_ring->notify_reader = false;
 
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
@@ -148,14 +149,20 @@ void process_rx_complete(void)
         int client = get_client(vaddr);
         if (client >= 0 && !ring_full(state.rx_ring_clients[client].used_ring)) {
             /* enqueue it. */
-            int was_empty = ring_empty(state.rx_ring_clients[client].used_ring);
             int err = enqueue_used(&state.rx_ring_clients[client], vaddr, len, cookie);
             if (err) {
                 print("MUX RX|ERROR: failed to enqueue onto used ring\n");
             }
 
-            if (was_empty) {
+            if (state.rx_ring_clients[client].used_ring->notify_reader) {
                 notify_clients[client] = true;
+            }
+
+            if (rx_free_was_empty) {
+                // ask the client to notify when done.
+                state.rx_ring_clients[client].free_ring->notify_reader = true;
+            } else {
+                state.rx_ring_clients[client].free_ring->notify_reader = false;
             }
         } else {
             // either the packet is not for us, or the client queue is full.
@@ -184,7 +191,7 @@ bool process_rx_free(void)
      * notify it only once.
      */
     uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
-    uint64_t enqueued = 0;
+    bool enqueued = false;
     for (int i = 0; i < NUM_CLIENTS; i++) {
         while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
             uintptr_t addr;
@@ -202,7 +209,7 @@ bool process_rx_free(void)
 
             err = enqueue_free(&state.rx_ring_drv, paddr, len, buffer);
             assert(!err);
-            enqueued += 1;
+            enqueued = true;
         }
     }
 
@@ -214,10 +221,7 @@ bool process_rx_free(void)
        We also could have enqueued packets into the free ring during 
        process_rx_complete(), so we could have also missed this empty condition.
        */
-    if (((original_size == 0 || 
-            original_size + enqueued != ring_size(state.rx_ring_drv.free_ring))
-            && enqueued != 0) ||
-            (dropped != 0 && rx_free_was_empty)) {
+    if ((enqueued || dropped) && state.rx_ring_drv.free_ring->notify_reader) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
@@ -249,6 +253,9 @@ void notified(sel4cp_channel ch)
 {
     process_rx_complete();
     process_rx_free();
+
+    // Ensure we get notified next time a packet comes in. 
+    state.rx_ring_drv.used_ring->notify_reader = true;
 }
 
 void init(void)
@@ -285,12 +292,12 @@ void init(void)
     state.mac_addrs[0][5] = 0xcc;*/
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, NULL, 1);
+    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, 1);
 
     // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, NULL, 1);
-    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, NULL, 1);
-    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, NULL, 1);
+    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1);
+    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1);
 
     /* Enqueue free buffers for the driver to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -298,8 +305,9 @@ void init(void)
         int err = enqueue_free(&state.rx_ring_drv, addr, BUF_SIZE, NULL);
         assert(!err);
     }
-
-    // Notify the driver that we are ready to receive. 
+    // ensure we get a notification when a packet comes in
+    state.rx_ring_drv.used_ring->notify_reader = true;
+    // Notify the driver that we are ready to receive
     sel4cp_notify(DRIVER_CH);
 
     return;

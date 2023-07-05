@@ -85,8 +85,16 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
+    tx_ring.used_ring->notify_reader = false;
+
     while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
         raw_tx(eth, buffer, len, cookie);
+    }
+
+    if (!(hw_ring_full(tx))) {
+        tx_ring.used_ring->notify_reader = true;
+    } else {
+        tx_ring.used_ring->notify_reader = false;
     }
 }
 
@@ -109,6 +117,7 @@ void notified(sel4cp_channel ch)
             return;
         } else {
             // safe to send now.
+            tx_ring.used_ring->notify_reader = true;
             initialised = true;
         }
     }
@@ -122,5 +131,5 @@ void init(void)
     sel4cp_dbg_puts(sel4cp_name);
     sel4cp_dbg_puts(": elf PD init function running\n");
 
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 }

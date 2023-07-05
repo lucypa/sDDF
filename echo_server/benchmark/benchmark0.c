@@ -42,7 +42,6 @@ event_id_t benchmarking_events[] = {
     SEL4BENCH_EVENT_BRANCH_MISPREDICT,
 };
 
-#ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
 static void
 sel4cp_benchmark_start(void)
 {
@@ -77,7 +76,6 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
     puthex64(total_util);
     print("\n");
 }
-#endif
 
 void notified(sel4cp_channel ch)
 {
@@ -92,9 +90,8 @@ void notified(sel4cp_channel ch)
             THREAD_MEMORY_RELEASE();
             sel4bench_start_counters(benchmark_bf);
 
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
             sel4cp_benchmark_start();
-            #endif
+
             sel4cp_notify(NOTIFY_START);
             break;
         case STOP:
@@ -109,13 +106,13 @@ void notified(sel4cp_channel ch)
                 print("\n");
             }
             print("}\n");
-            #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
+
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
             
             sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
-            #endif
+
             THREAD_MEMORY_RELEASE();
             sel4cp_notify(NOTIFY_STOP);
             break;

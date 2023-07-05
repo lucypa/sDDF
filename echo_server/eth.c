@@ -157,8 +157,10 @@ fill_rx_bufs(void)
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
             enable_irqs(eth, IRQ_MASK);
+        rx_ring.free_ring->notify_reader = false;
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        rx_ring.free_ring->notify_reader = true;
     }
 }
 
@@ -177,8 +179,10 @@ handle_rx(volatile struct enet_regs *eth)
          * so disable Rx irqs.
          */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        rx_ring.used_ring->notify_writer = true;
         return;
     }
+
     /*
      * Dequeue until either:
      *   we run out of filled buffers in the NIC ring
@@ -217,7 +221,7 @@ handle_rx(volatile struct enet_regs *eth)
      * Driver runs at highest priority, so buffers will be refilled
      * by caller before the notify causes a context switch.
      */
-    if ((og_size == 0 || og_size + num != ring_size(rx_ring.used_ring)) && num != 0) {
+    if (num && rx_ring.used_ring->notify_reader) {
         sel4cp_notify(RX_CH);
     }
 }
@@ -270,7 +274,6 @@ complete_tx(volatile struct enet_regs *eth)
     unsigned int read = ring->read;
     int enqueued = 0;
 
-    int was_empty = ring_empty(tx_ring.free_ring);
     bool hw_was_full = hw_ring_full(ring);
 
     while (!hw_ring_empty(ring) && !ring_full(tx_ring.free_ring)) {
@@ -295,7 +298,7 @@ complete_tx(volatile struct enet_regs *eth)
         enqueued++;
     }
 
-    if (was_empty && enqueued) {
+    if (tx_ring.free_ring->notify_reader && enqueued) {
         sel4cp_notify(TX_CH);
     }
 
@@ -425,8 +428,8 @@ void init(void)
     eth_setup();
 
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, NULL, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, NULL, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
 
     sel4cp_notify(INIT);
     /* Now wait for notification that buffers are initialised */

@@ -23,7 +23,7 @@ $(error SEL4CP_CONFIG must be specified)
 endif
 
 ifeq ($(strip $(TOOLCHAIN)),)
-	TOOLCHAIN := aarch64-none-elf
+	TOOLCHAIN := aarch64-unknown-linux-gnu
 endif
 
 CPU := cortex-a53
@@ -103,7 +103,7 @@ MUX_TX_OBJS := mux_tx_round_robin.o libsharedringbuffer/shared_ringbuffer.o
 COPY_OBJS := copy.o libsharedringbuffer/shared_ringbuffer.o
 BENCH_OBJS := benchmark/benchmark.o
 IDLE_OBJS := benchmark/idle.o
-ARP_OBJS := $(LWIPDIR)/core/inet_chksum.o $(LWIPDIR)/core/def.o arp.o libsharedringbuffer/shared_ringbuffer.o
+ARP_OBJS := $(LWIPDIR)/core/inet_chksum.o $(LWIPDIR)/core/def.o cache.o arp.o libsharedringbuffer/shared_ringbuffer.o
 TIMER_OBJS := timer.o
 BENCH0_OBJS := benchmark/benchmark0.o
 BENCH1_OBJS := benchmark/benchmark1.o
