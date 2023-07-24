@@ -38,6 +38,7 @@ typedef struct client_usage {
     uint64_t last_time;
     uint64_t curr_bandwidth;
     uint64_t max_bandwidth;
+    bool pending_timeout;
 } client_usage_t;
 
 typedef struct state {
@@ -48,7 +49,6 @@ typedef struct state {
 } state_t;
 
 state_t state;
-bool pending_timeout = false;
 
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
@@ -167,20 +167,11 @@ void process_tx_ready(void)
             driver_ntfn = true;
         }
 
-        if (!ring_empty(state.tx_ring_clients[client].used_ring) && !pending_timeout) {
+        if (!ring_empty(state.tx_ring_clients[client].used_ring) && !state.client_usage[client].pending_timeout) {
             // request a time out. so we come back to this client. 
             // THOUGHT: how will the timer inform us which clients queue to look at? 
-            assert(TIME_WINDOW > (curr_time - state.client_usage[client].last_time));
             set_timeout(TIME_WINDOW - (curr_time - state.client_usage[client].last_time));
-            //print("Tx used: ");
-            // puthex64(ring_size(state.tx_ring_clients[client].used_ring));
-            /*print(" used: ");
-            puthex64(ring_size(state.tx_ring_clients[client].used_ring));
-            print(" Driver rx free: ");
-            puthex64(ring_size(state.tx_ring_drv.free_ring));
-            print(" used: ");
-            puthex64(ring_size(state.tx_ring_drv.used_ring));*/
-            pending_timeout = true;
+            state.client_usage[client].pending_timeout = true;
             state.tx_ring_clients[client].used_ring->notify_reader = false;
         }
     }
@@ -239,9 +230,11 @@ void process_tx_complete(void)
 void notified(sel4cp_channel ch)
 {
     if (ch == TIMER_CH) {
-        // print("Got timeout!\n");
-        // TODO: print queue sizes. 
-        pending_timeout = false;
+        /* TODO: 
+         * Currently the timer driver only supports one timeout per client at a time. 
+         * as this mux only limits client 1, this is a bit of a hack. 
+         * in future we need to manage this properly. */ 
+        state.client_usage[1].pending_timeout = false;
         state.tx_ring_clients[1].used_ring->notify_reader = true;
     }
     process_tx_complete();
@@ -288,12 +281,15 @@ void init(void)
     state.client_usage[0].last_time = 0;//
     state.client_usage[0].max_bandwidth = 10000000;
     state.client_usage[0].curr_bandwidth = 0;
+    state.client_usage[0].pending_timeout = false;
     state.client_usage[1].last_time = 0;//
     state.client_usage[1].max_bandwidth = 1000000; // 100Mbps for the TIME_WINDOW
     state.client_usage[1].curr_bandwidth = 0;
+    state.client_usage[1].pending_timeout = false;
     state.client_usage[2].last_time = 0;//
     state.client_usage[2].max_bandwidth = 10000000;
     state.client_usage[2].curr_bandwidth = 0;
+    state.client_usage[2].pending_timeout = false;
 
     return;
 }

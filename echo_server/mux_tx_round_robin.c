@@ -109,7 +109,7 @@ void process_tx_ready(void)
         and it is an unecessary cost to loop through and change them before
         and after this function. As a quick hack this is instead in the notified function. 
     */
-    /*while(!ring_full(state.tx_ring_drv.used_ring)) {
+    while(!ring_full(state.tx_ring_drv.used_ring)) {
         old_enqueued = enqueued;
         // round robin over each client.
         for (int client = 0; client < NUM_CLIENTS; client++) {
@@ -133,24 +133,6 @@ void process_tx_ready(void)
 
         // we haven't processed any packets since last loop, exit.
         if (old_enqueued == enqueued) break;
-    }*/
-
-    for (int client = 0; client < NUM_CLIENTS; client++) {
-        while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-            uintptr_t addr;
-            unsigned int len;
-            void *cookie;
-            uintptr_t phys;
-
-            err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
-            assert(!err);
-            phys = get_phys_addr(addr);
-            assert(phys);
-            err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
-            assert(!err);
-
-            enqueued += 1;
-        }
     }
 
     if (state.tx_ring_drv.used_ring->notify_reader) {
@@ -206,6 +188,7 @@ void notified(sel4cp_channel ch)
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
             state.tx_ring_drv.free_ring->notify_reader = true;
+            break;
         }
     }
 }
