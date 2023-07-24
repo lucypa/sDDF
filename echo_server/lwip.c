@@ -17,6 +17,7 @@
 #include "lwip/dhcp.h"
 
 #include "shared_ringbuffer.h"
+#include "sel4bench.h"
 #include "echo.h"
 #include "timer.h"
 #include "cache.h"
@@ -66,6 +67,7 @@ typedef struct state {
     /* pbufs left to process */
     struct pbuf *head;
     struct pbuf *tail;
+    uint32_t num_pbufs;
 } state_t;
 
 struct log {
@@ -136,14 +138,12 @@ static inline void return_buffer(uintptr_t addr)
  */
 static void interface_free_buffer(struct pbuf *buf)
 {
-    if (!buf->in_use) {
-        SYS_ARCH_DECL_PROTECT(old_level);
-        lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *)buf;
-        SYS_ARCH_PROTECT(old_level);
-        return_buffer(custom_pbuf->buffer);
-        LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
-        SYS_ARCH_UNPROTECT(old_level);
-    }
+    SYS_ARCH_DECL_PROTECT(old_level);
+    lwip_custom_pbuf_t *custom_pbuf = (lwip_custom_pbuf_t *)buf;
+    SYS_ARCH_PROTECT(old_level);
+    return_buffer(custom_pbuf->buffer);
+    LWIP_MEMPOOL_FREE(RX_POOL, custom_pbuf);
+    SYS_ARCH_UNPROTECT(old_level);
 }
 
 /**
@@ -208,6 +208,7 @@ alloc_tx_buffer(size_t length)
 void
 enqueue_pbufs(struct pbuf *buff)
 {
+    request_free_ntfn(&state.tx_ring);
     if (state.head == NULL) {
         state.head = buff;
     } else {
@@ -221,12 +222,8 @@ enqueue_pbufs(struct pbuf *buff)
     // don't get freed (as we are only responsible
     // for freeing pbufs allocated by us - lwip also
     // allocates it's own. )
-    struct pbuf *curr = buff;
-    while (curr != NULL) {
-        curr->in_use = true;
-        pbuf_ref(curr);
-        curr = curr->next;
-    }
+    pbuf_ref(buff);
+    state.num_pbufs++;
 }
 
 /* Grab an free TX buffer, copy pbuf data over,
@@ -261,7 +258,6 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     unsigned int copied = 0;
     for (struct pbuf *curr = p; curr != NULL; curr = curr->next) {
         // this ensures the pbufs get freed properly. 
-        curr->in_use = false;
         unsigned char *buffer_dest = &frame[copied];
         if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
             /* Don't copy memory back into the same location */
@@ -275,8 +271,6 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
     if (err) {
-        print("LWIP|ERROR: TX used ring full\n");
-        err = enqueue_free(&(state.tx_ring), (uintptr_t)frame, BUF_SIZE, NULL);
         assert(!err);
         return ERR_MEM;
     }
@@ -296,6 +290,7 @@ process_tx_queue(void)
     while(current != NULL && !ring_empty(state.tx_ring.free_ring) && !ring_full(state.tx_ring.used_ring)) {
         uintptr_t buffer = alloc_tx_buffer(current->tot_len);
         if (buffer == NULL) {
+            print("process_tx_queue() could not alloc_tx_buffer\n");
             break;
         }
 
@@ -304,7 +299,6 @@ process_tx_queue(void)
         unsigned int copied = 0;
         for (struct pbuf *curr = current; curr != NULL; curr = curr->next) {
             // this ensures the pbufs get freed properly. 
-            curr->in_use = false;
             unsigned char *buffer_dest = &frame[copied];
             if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
                 /* Don't copy memory back into the same location */
@@ -330,23 +324,29 @@ process_tx_queue(void)
 
         /* Notify the server for next time we recv() */
         notify_tx = true;
-        // sel4cp_notify(TX_CH);
 
         /* free the pbufs. */
         temp = current;
         current = current->next_chain;
         pbuf_free(temp);
+        state.num_pbufs--;
     }
 
     // if curr != NULL, we need to make sure we don't lose it and can come back
     state.head = current;
+    if (!state.head) {
+        // no longer need a notification from the tx mux. 
+        cancel_free_ntfn(&state.tx_ring);
+    } else {
+        request_free_ntfn(&state.tx_ring);
+    }
 }
 
 void
 process_rx_queue(void)
 {
     cancel_used_ntfn(&state.rx_ring);
-    while (!ring_empty(state.rx_ring.used_ring) && !ring_empty(state.tx_ring.free_ring)) {
+    while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
         void *cookie;
@@ -398,6 +398,8 @@ static void netif_status_callback(struct netif *netif)
     if (dhcp_supplied_address(netif)) {
         /* Tell the ARP component so we it can respond to ARP requests. */
         sel4cp_mr_set(0, ip4_addr_get_u32(netif_ip4_addr(netif)));
+        sel4cp_mr_set(1, (state.mac[0] << 24) | (state.mac[1] << 16) | (state.mac[2] << 8) | (state.mac[3]));
+        sel4cp_mr_set(2, (state.mac[4] << 24) | (state.mac[5] << 16));
         sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 1));
 
         print("DHCP request finished, IP address for netif ");
@@ -447,11 +449,12 @@ void dump_log(void)
 void init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 1);
-    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
+    ring_init(&state.rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
     state.head = NULL;
     state.tail = NULL;
+    state.num_pbufs = 0;
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_rx + (BUF_SIZE * i);
@@ -460,7 +463,7 @@ void init(void)
     }
 
     lwip_init();
-    set_timeout();
+    // set_timeout();
 
     LWIP_MEMPOOL_INIT(RX_POOL);
 
@@ -527,13 +530,8 @@ void notified(sel4cp_channel ch)
             set_timeout();
             break;
         case TX_CH:
-            /*
-             * We stop processing the Rx ring if there are no
-             * Tx slots avilable.
-             * Resume here.
-             */
-            process_rx_queue();
             process_tx_queue();
+            process_rx_queue();
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
@@ -543,7 +541,11 @@ void notified(sel4cp_channel ch)
     
     if (notify_rx && state.rx_ring.free_ring->notify_reader) {
         notify_rx = false;
-        sel4cp_notify_delayed(RX_CH);
+        if (!have_signal) {
+            sel4cp_notify_delayed(RX_CH);
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + RX_CH) {
+            sel4cp_notify(RX_CH);
+        }
     }
 
     if (notify_tx && state.tx_ring.used_ring->notify_reader) {

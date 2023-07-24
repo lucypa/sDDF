@@ -24,7 +24,7 @@
 #define LWIP_DHCP                       1
 
 #define MEM_ALIGNMENT                   4
-#define MEM_SIZE                        0x4000
+#define MEM_SIZE                        0x10000
 
 #define ETHARP_SUPPORT_STATIC_ENTRIES   1
 #define SYS_LIGHTWEIGHT_PROT            0
@@ -66,7 +66,7 @@
     (p)->next_chain = NULL;
 
 /* Debugging options */
-//#define LWIP_DEBUG
+#define LWIP_DEBUG
 /* Change this to LWIP_DBG_LEVEL_ALL to see a trace 
 #define LWIP_DBG_MIN_LEVEL              LWIP_DBG_LEVEL_WARNING
 

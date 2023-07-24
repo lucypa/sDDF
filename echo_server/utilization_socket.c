@@ -147,21 +147,25 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
             sel4cp_dbg_puts("Failed to send OK message through utilization peer");
         }
     } else if (msg_match(data_packet_str, START)) {
-        print("measurement starting... \n");
-
-        start = bench->ts;
-        idle_ccount_start = bench->ccount;
-        idle_overflow_start = bench->overflows;
-
-        sel4cp_notify(START_PMU);
+        print(sel4cp_name);
+        print(" measurement starting... \n");
+        if (!strcmp(sel4cp_name, "client0")) {
+            start = bench->ts;
+            idle_ccount_start = bench->ccount;
+            idle_overflow_start = bench->overflows;
+            // sel4cp_notify(START_PMU);
+        }
     } else if (msg_match(data_packet_str, STOP)) {
-        print("measurement finished \n");;
+        print(sel4cp_name);
+        print(" measurement finished \n");;
 
-        uint64_t total, idle;
+        uint64_t total = 0, idle = 0;
 
-        total = bench->ts - start;
-        total += ULONG_MAX * (bench->overflows - idle_overflow_start);
-        idle = bench->ccount - idle_ccount_start;
+        if (!strcmp(sel4cp_name, "client0")) {
+            total = bench->ts - start;
+            total += ULONG_MAX * (bench->overflows - idle_overflow_start);
+            idle = bench->ccount - idle_ccount_start;
+        }
 
         char tbuf[16];
         my_itoa(total, tbuf);
@@ -186,7 +190,9 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
 
         tcp_shutdown(pcb, 0, 1);
 
-        sel4cp_notify(STOP_PMU);
+        if (!strcmp(sel4cp_name, "client0")) { 
+            //sel4cp_notify(STOP_PMU);
+        }
     } else if (msg_match(data_packet_str, QUIT)) {
         /* Do nothing for now */
     } else {

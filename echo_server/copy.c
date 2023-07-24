@@ -26,7 +26,6 @@ ring_handle_t rx_ring_cli;
 void process_rx_complete(void)
 {
     uint64_t enqueued = 0;
-    rx_ring_mux.used_ring->notify_reader = false;
     // We only want to copy buffers if all the dequeues and enqueues will be successful
     while (!ring_empty(rx_ring_mux.used_ring) &&
             !ring_empty(rx_ring_cli.free_ring) &&
@@ -85,24 +84,24 @@ void process_rx_complete(void)
     /* We want to inform the mux that more free buffers are available or the 
         used ring can now be refilled */
     if (enqueued && (rx_ring_mux.free_ring->notify_reader || rx_ring_mux.used_ring->notify_writer)) {
-        if (have_signal) {
+        if (have_signal && signal == BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH) {
             // We need to notify the client, but this should
             // happen first. 
             sel4cp_notify(CLIENT_CH);
         }
+
         sel4cp_notify_delayed(MUX_RX_CH);
     }
 
-    if (ring_empty(rx_ring_cli.free_ring) && !ring_empty(rx_ring_mux.used_ring)) {
+    if (!ring_empty(rx_ring_mux.used_ring) || rx_ring_mux.free_ring->notify_reader) {
         // we want to be notified when this changes so we can continue
         // enqueuing packets to the client.
-        rx_ring_cli.free_ring->notify_writer = true;
+        rx_ring_cli.free_ring->notify_reader = true;
+        // we don't need a notification from the multiplexer now. 
+        // rx_ring_mux.used_ring->notify_reader = false;
     } else {
-        rx_ring_cli.free_ring->notify_writer = false;
-    }
-
-    if (ring_empty(rx_ring_mux.used_ring)) {
-        rx_ring_mux.used_ring->notify_reader = true;
+        rx_ring_cli.free_ring->notify_reader = false;
+        // rx_ring_mux.used_ring->notify_reader = true;
     }
 }
 
@@ -122,8 +121,8 @@ void notified(sel4cp_channel ch)
 void init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, 0);
-    ring_init(&rx_ring_cli, (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, 0);
+    ring_init(&rx_ring_mux, (ring_buffer_t *)rx_free_mux, (ring_buffer_t *)rx_used_mux, 0, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&rx_ring_cli, (ring_buffer_t *)rx_free_cli, (ring_buffer_t *)rx_used_cli, 0, NUM_BUFFERS, NUM_BUFFERS);
     // ensure we get notified when a packet comes in 
     rx_ring_mux.used_ring->notify_reader = true;
     return;

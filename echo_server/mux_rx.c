@@ -119,7 +119,6 @@ void process_rx_complete(void)
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
-    bool rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
 
     /* We don't need a notification from the driver... */
     state.rx_ring_drv.used_ring->notify_reader = false;
@@ -157,13 +156,6 @@ void process_rx_complete(void)
             if (state.rx_ring_clients[client].used_ring->notify_reader) {
                 notify_clients[client] = true;
             }
-
-            if (rx_free_was_empty) {
-                // ask the client to notify when done.
-                state.rx_ring_clients[client].free_ring->notify_reader = true;
-            } else {
-                state.rx_ring_clients[client].free_ring->notify_reader = false;
-            }
         } else {
             // either the packet is not for us, or the client queue is full.
             // return the buffer to the driver.
@@ -180,6 +172,13 @@ void process_rx_complete(void)
         if (notify_clients[client]) {
             sel4cp_notify(client);
         }
+
+        if (state.rx_ring_drv.free_ring->notify_reader) {
+            // ask the client to notify when done.
+            state.rx_ring_clients[client].free_ring->notify_reader = true;
+        } else {
+            state.rx_ring_clients[client].free_ring->notify_reader = false;
+        }
     }
 }
 
@@ -190,7 +189,6 @@ bool process_rx_free(void)
      * ring was empty, we want to notify the driver. We also only want to
      * notify it only once.
      */
-    uint64_t original_size = ring_size(state.rx_ring_drv.free_ring);
     bool enqueued = false;
     for (int i = 0; i < NUM_CLIENTS; i++) {
         while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
@@ -223,6 +221,15 @@ bool process_rx_free(void)
        */
     if ((enqueued || dropped) && state.rx_ring_drv.free_ring->notify_reader) {
         sel4cp_notify_delayed(DRIVER_CH);
+    }
+
+    for (int client = 0; client < NUM_CLIENTS; client++) {
+        if (state.rx_ring_drv.free_ring->notify_reader) {
+            // ask the client to notify when done.
+            state.rx_ring_clients[client].free_ring->notify_reader = true;
+        } else {
+            state.rx_ring_clients[client].free_ring->notify_reader = false;
+        }
     }
 
     return enqueued;
@@ -271,12 +278,11 @@ void init(void)
     state.mac_addrs[0][5] = 0xcc;*/
 
     /* Set up shared memory regions */
-    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, 1);
+    ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, 1, NUM_BUFFERS, NUM_BUFFERS);
 
-    // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1);
-    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1);
-    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1);
+    ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1, NUM_BUFFERS, 16);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Enqueue free buffers for the driver to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {

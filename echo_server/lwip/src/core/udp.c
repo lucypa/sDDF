@@ -756,6 +756,7 @@ udp_sendto_if_src_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *d
 
   /* packet too large to add a UDP header without causing an overflow? */
   if ((u16_t)(p->tot_len + UDP_HLEN) < p->tot_len) {
+    print("p->tot_len + UDP_HLEN < p->tot_len\n");
     return ERR_MEM;
   }
   /* not enough space to add an UDP header to first pbuf in given p chain? */
@@ -764,6 +765,7 @@ udp_sendto_if_src_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *d
     q = pbuf_alloc(PBUF_IP, UDP_HLEN, PBUF_RAM);
     /* new header pbuf could not be allocated? */
     if (q == NULL) {
+      print("udp_send could not allocate header\n");
       LWIP_DEBUGF(UDP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_SERIOUS, ("udp_send: could not allocate header\n"));
       return ERR_MEM;
     }

@@ -210,6 +210,18 @@ notified(sel4cp_channel ch)
     process_rx_complete();
 }
 
+static void
+dump_mac(uint8_t *mac)
+{
+    for (unsigned i = 0; i < 6; i++) {
+        putC(hexchar((mac[i] >> 4) & 0xf));
+        putC(hexchar(mac[i] & 0xf));
+        if (i < 5) {
+            putC(':');
+        }
+    }
+}
+
 seL4_MessageInfo_t
 protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
 {
@@ -225,14 +237,26 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     // eg change my ip or register a new one.
     // reg 1 is the ip address. 
     uint32_t ip_addr = sel4cp_mr_get(0);
+    uint32_t mac_lower = sel4cp_mr_get(1);
+    uint32_t mac_higher = sel4cp_mr_get(2);
+
+    uint8_t mac[8];
+    mac[0] = mac_lower >> 24;
+    mac[1] = mac_lower >> 16 & 0xff;
+    mac[2] = mac_lower >> 8 & 0xff;
+    mac[3] = mac_lower & 0xff;
+    mac[4] = mac_higher >> 24;
+    mac[5] = mac_higher >> 16 & 0xff;
     char buf[16];
 
     switch (sel4cp_msginfo_get_label(msginfo)) {
         case REG_IP:
             print("Client registering ip address: ");
             print(print_ipaddr(ip_addr, buf, 16));
+            print(" with MAC: ");
+            dump_mac(mac);
             print(" client: ");
-            puthex64(client);
+            put8(client);
             print("\n");
             ipv4_addrs[client] = ip_addr;
             break;
@@ -250,8 +274,8 @@ void
 init(void)
 {
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Set up hardcoded mac addresses */
     mac_addrs[0][0] = 0x52;

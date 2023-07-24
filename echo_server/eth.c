@@ -15,6 +15,8 @@
 #define TX_CH  1
 #define RX_CH  2
 
+#define NUM_BUFFERS 512
+
 #define MDC_FREQ    20000000UL
 
 /* Memory regions. These all have to be here to keep compiler happy */
@@ -380,7 +382,7 @@ eth_setup(void)
     eth->opd = PAUSE_OPCODE_FIELD;
 
     /* coalesce transmit IRQs to batches of 128 */
-    eth->txic0 = ICEN | ICFT(128) | 0x200;
+    eth->txic0 = ICEN | ICFT(128) | 0xFF;
     eth->tipg = TIPG;
     /* Transmit FIFO Watermark register - store and forward */
     eth->tfwr = STRFWD;
@@ -422,8 +424,8 @@ void init(void)
     eth_setup();
 
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
     tx_ring.used_ring->notify_reader = true;
     // check if we have any requests to transmit.

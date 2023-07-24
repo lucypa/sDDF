@@ -14,10 +14,12 @@
 
 #include <stdint.h>
 #include <sel4cp.h>
+#include "util.h"
 
 #define GET_TIME 0
 #define SET_TIMEOUT 1
 
+#define GPT_STATUS_REGISTER_CLEAR 0x3F
 #define CR 0
 #define PR 1
 #define SR 2
@@ -29,10 +31,14 @@
 #define ICR2 8
 #define CNT 9
 
-#define MAX_TIMEOUTS 3
+#define MAX_TIMEOUTS 6
 
 #define IRQ_CH 0
 
+#define GPT_FREQ   (12u)
+#define NS_IN_US    1000ULL
+
+uintptr_t uart_base;
 uintptr_t gpt_regs;
 static volatile uint32_t *gpt;
 
@@ -40,7 +46,7 @@ static uint32_t overflow_count;
 
 static uint64_t timeouts[MAX_TIMEOUTS];
 static sel4cp_channel active_channel = -1;
-static bool timeout_active;
+static bool timeout_active = false;
 static uint64_t current_timeout;
 static uint8_t pending_timeouts;
 
@@ -48,7 +54,6 @@ static uint8_t pending_timeouts;
 static uint64_t
 get_ticks(void) 
 {
-    /* FIXME: If an overflow interrupt happens in the middle here we are in trouble */
     uint64_t overflow = overflow_count;
     uint32_t sr1 = gpt[SR];
     uint32_t cnt = gpt[CNT];
@@ -81,11 +86,16 @@ irq(sel4cp_channel ch)
     }
 
     if (pending_timeouts && !timeout_active) {
+        uint64_t curr_time = get_ticks();
         /* find next timeout */
         uint64_t next_timeout = UINT64_MAX;
         sel4cp_channel ch = -1;
         for (unsigned i = 0; i < MAX_TIMEOUTS; i++) {
-            if (timeouts[i] != 0 && timeouts[i] < next_timeout) {
+            if (timeouts[i] != 0 && timeouts[i] <= curr_time) {
+                timeouts[i] = 0;
+                pending_timeouts--;
+                sel4cp_notify(i);
+            } else if (timeouts[i] != 0 && timeouts[i] < next_timeout) {
                 next_timeout = timeouts[i];
                 ch = i;
             }
@@ -93,7 +103,10 @@ irq(sel4cp_channel ch)
         /* FIXME: Is there a race here?  -- Probably! Fix it later. */
         if (ch != -1 && overflow_count == (next_timeout >> 32)) {
             pending_timeouts--;
-            gpt[OCR1] = next_timeout;
+            gpt[OCR1] = (uint32_t)next_timeout;
+            while (gpt[OCR1] != next_timeout) {
+                gpt[OCR1] = (uint32_t)next_timeout;
+            }
             gpt[IR] |= 1;
             timeout_active = true;
             current_timeout = next_timeout;
@@ -118,12 +131,13 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     uint64_t rel_timeout, cur_ticks, abs_timeout;
     switch (sel4cp_msginfo_get_label(msginfo)) {
         case GET_TIME:
-            // Just wants the time. 
-            seL4_SetMR(0, get_ticks());
+            // Just wants the time.
+            cur_ticks = (get_ticks() / (uint64_t)GPT_FREQ);
+            seL4_SetMR(0, cur_ticks);
             return sel4cp_msginfo_new(0, 1);
         case SET_TIMEOUT:
             // Request to set a timeout. 
-            rel_timeout = seL4_GetMR(0);
+            rel_timeout = (uint64_t)(GPT_FREQ) * (seL4_GetMR(0));
             cur_ticks = get_ticks();
             abs_timeout = cur_ticks + rel_timeout;
 
@@ -134,7 +148,10 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
                     /* there current timeout is now treated as pending */
                     pending_timeouts++;
                 }
-                gpt[OCR1] = abs_timeout;
+                gpt[OCR1] = (uint32_t)abs_timeout;
+                while (gpt[OCR1] != abs_timeout) {
+                    gpt[OCR1] = (uint32_t)abs_timeout;
+                }
                 gpt[IR] |= 1;
                 timeout_active = true;
                 current_timeout = abs_timeout;
@@ -156,6 +173,15 @@ init(void)
 {
     gpt = (volatile uint32_t *) gpt_regs;
 
+    /* Disable GPT. */
+    gpt[CR] = 0;
+    gpt[SR] = GPT_STATUS_REGISTER_CLEAR;
+
+    /* Configure GPT. */
+    gpt[CR] = 0 | (1 << 15); /* Reset the GPT */
+    /* SWR will be 0 when the reset is done */
+    while (gpt[CR] & (1 << 15));
+
     uint32_t cr = (
         (1 << 9) | // Free run mode
         (1 << 6) | // Peripheral clocks
@@ -167,6 +193,8 @@ init(void)
     gpt[IR] = (
         (1 << 5) // rollover interrupt
     );
+
+    gpt[PR] = 1; // prescaler. 
 
     /* Now go passive! */
 }

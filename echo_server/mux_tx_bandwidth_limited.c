@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include <math.h>
 
 uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
@@ -22,18 +23,32 @@ uintptr_t uart_base;
 #define CLIENT_1 1
 #define ARP 2
 #define NUM_CLIENTS 3
+#define TIMER_CH 4
 #define DRIVER 3
 #define NUM_BUFFERS 512
 #define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
 
+#define TIME_WINDOW 10000ULL // 10 milliseconds
+
+#define GET_TIME 0
+#define SET_TIMEOUT 1
+
+typedef struct client_usage {
+    uint64_t last_time;
+    uint64_t curr_bandwidth;
+    uint64_t max_bandwidth;
+} client_usage_t;
+
 typedef struct state {
     /* Pointers to shared buffers */
     ring_handle_t tx_ring_drv;
     ring_handle_t tx_ring_clients[NUM_CLIENTS];
+    client_usage_t client_usage[NUM_CLIENTS];
 } state_t;
 
 state_t state;
+bool pending_timeout = false;
 
 static uintptr_t
 get_phys_addr(uintptr_t virtual)
@@ -82,61 +97,53 @@ get_virt_addr(uintptr_t phys)
 static int
 get_client(uintptr_t addr)
 {
+    int client;
     if (addr >= shared_dma_vaddr_cli0 && addr < shared_dma_vaddr_cli0 + DMA_SIZE) {
-        return CLIENT_0;
+        client = CLIENT_0;
     } else if (addr >= shared_dma_vaddr_cli1 && addr < shared_dma_vaddr_cli1 + DMA_SIZE) {
-        return CLIENT_1;
-    }else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
-        return ARP;
+        client = CLIENT_1;
+    } else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
+        client = ARP;
+    } else {
+        print("MUX TX|ERROR: Buffer out of range\n");
+        assert(0);
     }
-    print("MUX TX|ERROR: Buffer out of range\n");
-    assert(0);
+
+    return client;
 }
 
-/*
- * Loop over all used tx buffers in client queues and enqueue to driver.
- */
+// TODO: Map the timer into this address space with RDONLY so we can get the curr_time more efficiently...  
+static uint64_t
+get_time(void)
+{
+    sel4cp_ppcall(TIMER_CH, sel4cp_msginfo_new(GET_TIME, 0));
+    uint64_t time_now = seL4_GetMR(0);
+    return time_now;
+}
+
+static void
+set_timeout(uint64_t timeout)
+{
+    sel4cp_mr_set(0, timeout);
+    sel4cp_ppcall(TIMER_CH, sel4cp_msginfo_new(SET_TIMEOUT, 1));
+}
+
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
-    uint64_t old_enqueued = enqueued;
+    bool driver_ntfn = false;
     int err;
-
-    /* 
-        We should negate the need for a notification inside this loop, 
-        but given we loop around each client at a time, this would not change anything
-        and it is an unecessary cost to loop through and change them before
-        and after this function. As a quick hack this is instead in the notified function. 
-    */
-    /*while(!ring_full(state.tx_ring_drv.used_ring)) {
-        old_enqueued = enqueued;
-        // round robin over each client.
-        for (int client = 0; client < NUM_CLIENTS; client++) {
-            // Process a single used buffer at a time. 
-            if (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-                uintptr_t addr;
-                unsigned int len;
-                void *cookie;
-                uintptr_t phys;
-
-                err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
-                assert(!err);
-                phys = get_phys_addr(addr);
-                assert(phys);
-                err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
-                assert(!err);
-
-                enqueued += 1;
-            }
-        }
-
-        // we haven't processed any packets since last loop, exit.
-        if (old_enqueued == enqueued) break;
-    }*/
+    uint64_t curr_time = get_time();
 
     for (int client = 0; client < NUM_CLIENTS; client++) {
-        while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
+        // Was the last time we serviced this client inside the time window? 
+        if (curr_time - state.client_usage[client].last_time >= TIME_WINDOW) {
+            state.client_usage[client].curr_bandwidth = 0;
+            state.client_usage[client].last_time = curr_time;
+        }
+
+        while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)
+                && (state.client_usage[client].curr_bandwidth < state.client_usage[client].max_bandwidth)) {
             uintptr_t addr;
             unsigned int len;
             void *cookie;
@@ -150,12 +157,41 @@ void process_tx_ready(void)
             assert(!err);
 
             enqueued += 1;
+            state.client_usage[client].curr_bandwidth += (len * 8);
+        }
+
+        if (state.tx_ring_clients[client].free_ring->notify_reader) {
+            /* If any of the clients are requesting a notification, 
+                then ensure the driver notifies mux when transmit is finished
+                so it can notify the client. */
+            driver_ntfn = true;
+        }
+
+        if (!ring_empty(state.tx_ring_clients[client].used_ring) && !pending_timeout) {
+            // request a time out. so we come back to this client. 
+            // THOUGHT: how will the timer inform us which clients queue to look at? 
+            assert(TIME_WINDOW > (curr_time - state.client_usage[client].last_time));
+            set_timeout(TIME_WINDOW - (curr_time - state.client_usage[client].last_time));
+            //print("Tx used: ");
+            // puthex64(ring_size(state.tx_ring_clients[client].used_ring));
+            /*print(" used: ");
+            puthex64(ring_size(state.tx_ring_clients[client].used_ring));
+            print(" Driver rx free: ");
+            puthex64(ring_size(state.tx_ring_drv.free_ring));
+            print(" used: ");
+            puthex64(ring_size(state.tx_ring_drv.used_ring));*/
+            pending_timeout = true;
+            state.tx_ring_clients[client].used_ring->notify_reader = false;
         }
     }
 
-    if (state.tx_ring_drv.used_ring->notify_reader) {
+    if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
         sel4cp_notify_delayed(DRIVER);
     }
+
+    /* Ensure we get a notification when transmit is complete
+      so we can dequeue free buffers and return them to the client. */
+    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 /*
@@ -167,6 +203,7 @@ void process_tx_complete(void)
 {
     // bitmap stores whether which clients need notifying.
     bool notify_clients[NUM_CLIENTS] = {false};
+    bool driver_ntfn = false;
 
     while (!ring_empty(state.tx_ring_drv.free_ring)) {
         uintptr_t addr;
@@ -183,6 +220,10 @@ void process_tx_complete(void)
 
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
             notify_clients[client] = true;
+            /* If any of the clients are requesting a notification, 
+                then ensure the driver notifies tx mux so we can notify 
+                the client. */
+            driver_ntfn = true;
         }
     }
 
@@ -192,22 +233,19 @@ void process_tx_complete(void)
             sel4cp_notify(client);
         }
     }
+    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 void notified(sel4cp_channel ch)
 {
-    state.tx_ring_drv.free_ring->notify_reader = false;
+    if (ch == TIMER_CH) {
+        // print("Got timeout!\n");
+        // TODO: print queue sizes. 
+        pending_timeout = false;
+        state.tx_ring_clients[1].used_ring->notify_reader = true;
+    }
     process_tx_complete();
     process_tx_ready();
-
-    // We only want to get a notification from the driver regarding 
-    // new free tx buffers, if any
-    // of the clients need a notification. 
-    for (int client = 0; client < NUM_CLIENTS; client++) {
-        if (state.tx_ring_clients[client].free_ring->notify_reader) {
-            state.tx_ring_drv.free_ring->notify_reader = true;
-        }
-    }
 }
 
 void init(void)
@@ -220,21 +258,24 @@ void init(void)
     ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Enqueue free transmit buffers to all clients. */
-    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_cli0 + (BUF_SIZE * i);
-        int err = enqueue_free(&state.tx_ring_clients[0], addr, BUF_SIZE, NULL);
-        assert(!err);
-    }
+    int err;
+    uintptr_t addr;
 
-    for (int i = 0; i < 16 - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
-        int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        addr = shared_dma_vaddr_cli0 + (BUF_SIZE * i);
+        err = enqueue_free(&state.tx_ring_clients[0], addr, BUF_SIZE, NULL);
         assert(!err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
-        int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
+        addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
+        err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
+        err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
         assert(!err);
     }
 
@@ -243,6 +284,16 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
+
+    state.client_usage[0].last_time = 0;//
+    state.client_usage[0].max_bandwidth = 10000000;
+    state.client_usage[0].curr_bandwidth = 0;
+    state.client_usage[1].last_time = 0;//
+    state.client_usage[1].max_bandwidth = 1000000; // 100Mbps for the TIME_WINDOW
+    state.client_usage[1].curr_bandwidth = 0;
+    state.client_usage[2].last_time = 0;//
+    state.client_usage[2].max_bandwidth = 10000000;
+    state.client_usage[2].curr_bandwidth = 0;
 
     return;
 }
