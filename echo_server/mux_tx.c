@@ -164,17 +164,22 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    state.tx_ring_drv.free_ring->notify_reader = false;
     process_tx_complete();
     process_tx_ready();
 
     // We only want to get a notification from the driver regarding 
     // new free tx buffers, if any
     // of the clients need a notification. 
+    bool found = false;
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
             state.tx_ring_drv.free_ring->notify_reader = true;
+            found = true;
         }
+    }
+    
+    if (!found) {
+        state.tx_ring_drv.free_ring->notify_reader = false;
     }
 }
 
@@ -194,7 +199,7 @@ void init(void)
         assert(!err);
     }
 
-    for (int i = 0; i < 16 - 1; i++) {
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
         assert(!err);

@@ -345,7 +345,6 @@ process_tx_queue(void)
 void
 process_rx_queue(void)
 {
-    cancel_used_ntfn(&state.rx_ring);
     while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -361,7 +360,6 @@ process_rx_queue(void)
             pbuf_free(p);
         }
     }
-    request_used_ntfn(&state.rx_ring);
 }
 
 /**
@@ -463,7 +461,7 @@ void init(void)
     }
 
     lwip_init();
-    // set_timeout();
+    set_timeout();
 
     LWIP_MEMPOOL_INIT(RX_POOL);
 

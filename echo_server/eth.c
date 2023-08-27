@@ -157,6 +157,7 @@ fill_rx_bufs(void)
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
             enable_irqs(eth, IRQ_MASK);
+        __sync_synchronize();
         rx_ring.free_ring->notify_reader = false;
     } else {
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
@@ -170,7 +171,6 @@ handle_rx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &rx;
     int num = 0;
     unsigned int read = ring->read;
-    int og_size = ring_size(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
@@ -179,6 +179,7 @@ handle_rx(volatile struct enet_regs *eth)
          * so disable Rx irqs.
          */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        __sync_synchronize();
         rx_ring.used_ring->notify_writer = true;
         return;
     }

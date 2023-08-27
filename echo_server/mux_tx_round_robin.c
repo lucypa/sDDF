@@ -178,25 +178,28 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    state.tx_ring_drv.free_ring->notify_reader = false;
     process_tx_complete();
     process_tx_ready();
 
     // We only want to get a notification from the driver regarding 
     // new free tx buffers, if any
     // of the clients need a notification. 
+    bool found = false;
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
             state.tx_ring_drv.free_ring->notify_reader = true;
-            break;
+            found = true;
         }
+    }
+    
+    if (!found) {
+        state.tx_ring_drv.free_ring->notify_reader = false;
     }
 }
 
 void init(void)
 {
     /* Set up shared memory regions */
-    // FIX ME: Use the notify function pointer to put the notification in?
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, 1, NUM_BUFFERS, NUM_BUFFERS);

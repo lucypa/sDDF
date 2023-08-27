@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "fence.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -81,9 +82,8 @@ void process_rx_complete(void)
         sel4cp_notify_delayed(CLIENT_CH);
     }
 
-    /* We want to inform the mux that more free buffers are available or the 
-        used ring can now be refilled */
-    if (enqueued && (rx_ring_mux.free_ring->notify_reader || rx_ring_mux.used_ring->notify_writer)) {
+    /* We want to inform the mux that more free buffers are available */
+    if (enqueued && rx_ring_mux.free_ring->notify_reader) {
         if (have_signal && signal == BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH) {
             // We need to notify the client, but this should
             // happen first. 
@@ -97,25 +97,15 @@ void process_rx_complete(void)
         // we want to be notified when this changes so we can continue
         // enqueuing packets to the client.
         rx_ring_cli.free_ring->notify_reader = true;
-        // we don't need a notification from the multiplexer now. 
-        // rx_ring_mux.used_ring->notify_reader = false;
     } else {
         rx_ring_cli.free_ring->notify_reader = false;
-        // rx_ring_mux.used_ring->notify_reader = true;
     }
 }
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == CLIENT_CH || ch == MUX_RX_CH) {
-        /* We have one job. */
-        process_rx_complete();
-    } else {
-        print("COPY|ERROR: unexpected notification from channel: ");
-        puthex64(ch);
-        print("\n");
-        assert(0);
-    }
+    /* We have one job. */
+    process_rx_complete();
 }
 
 void init(void)

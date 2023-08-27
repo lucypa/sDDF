@@ -28,7 +28,9 @@
 #define PD_MUX_RX_ID    2
 #define PD_MUX_TX_ID    3
 #define PD_COPY_ID      4
+#define PD_COPY1_ID     5
 #define PD_LWIP_ID      6
+#define PD_LWIP1_ID     7
 #define PD_ARP_ID       8
 #define PD_TIMER_ID     9
 
@@ -69,7 +71,9 @@ sel4cp_benchmark_start(void)
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY1_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_LWIP_ID);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_LWIP1_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP_ID);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
     seL4_BenchmarkResetLog();
@@ -108,8 +112,10 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
         case PD_ETH_ID: print("ETH DRIVER"); break;
         case PD_MUX_RX_ID: print("MUX RX"); break;
         case PD_MUX_TX_ID: print("MUX TX"); break;
-        case PD_COPY_ID: print("COPIER"); break;
-        case PD_LWIP_ID: print("LWIP CLIENT"); break;
+        case PD_COPY_ID: print("COPIER0"); break;
+        case PD_COPY1_ID: print("COPIER1"); break;
+        case PD_LWIP_ID: print("LWIP CLIENT0"); break;
+        case PD_LWIP1_ID: print("LWIP CLIENT1"); break;
         case PD_ARP_ID: print("ARP"); break;
         case PD_TIMER_ID: print("TIMER"); break;
     }
@@ -242,8 +248,14 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop_tcb(PD_COPY_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_COPY_ID, kernel, entries, number_schedules, total);
 
+            sel4cp_benchmark_stop_tcb(PD_COPY1_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_COPY1_ID, kernel, entries, number_schedules, total);
+
             sel4cp_benchmark_stop_tcb(PD_LWIP_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_LWIP_ID, kernel, entries, number_schedules, total);
+            
+            sel4cp_benchmark_stop_tcb(PD_LWIP1_ID, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_LWIP1_ID, kernel, entries, number_schedules, total);
 
             sel4cp_benchmark_stop_tcb(PD_ARP_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ARP_ID, kernel, entries, number_schedules, total);

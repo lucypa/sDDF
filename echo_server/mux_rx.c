@@ -120,9 +120,6 @@ void process_rx_complete(void)
         process_rx_free() as we dropped some packets */
     dropped = 0;
 
-    /* We don't need a notification from the driver... */
-    state.rx_ring_drv.used_ring->notify_reader = false;
-
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
         unsigned int len = 0;
@@ -239,9 +236,6 @@ void notified(sel4cp_channel ch)
 {
     process_rx_complete();
     process_rx_free();
-
-    // Ensure we get notified next time a packet comes in. 
-    state.rx_ring_drv.used_ring->notify_reader = true;
 }
 
 void init(void)
@@ -281,7 +275,7 @@ void init(void)
     ring_init(&state.rx_ring_drv, (ring_buffer_t *)rx_free_drv, (ring_buffer_t *)rx_used_drv, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
-    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1, NUM_BUFFERS, 16);
+    ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Enqueue free buffers for the driver to access */
