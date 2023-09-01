@@ -1,6 +1,7 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
 #include "fence.h"
+#include "log_buffer.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -24,7 +25,7 @@ uintptr_t uart_base;
 ring_handle_t rx_ring_mux;
 ring_handle_t rx_ring_cli;
 
-void process_rx_complete(void)
+void process_rx_complete(sel4cp_channel ch)
 {
     uint64_t enqueued = 0;
     // We only want to copy buffers if all the dequeues and enqueues will be successful
@@ -78,34 +79,35 @@ void process_rx_complete(void)
         enqueued += 1;
     }
 
-    if (rx_ring_cli.used_ring->notify_reader && enqueued) {
-        sel4cp_notify_delayed(CLIENT_CH);
-    }
-
-    /* We want to inform the mux that more free buffers are available */
-    if (enqueued && rx_ring_mux.free_ring->notify_reader) {
-        if (have_signal && signal == BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH) {
-            // We need to notify the client, but this should
-            // happen first. 
-            sel4cp_notify(CLIENT_CH);
-        }
-
-        sel4cp_notify_delayed(MUX_RX_CH);
-    }
-
-    if (!ring_empty(rx_ring_mux.used_ring) || rx_ring_mux.free_ring->notify_reader) {
+    if (!ring_empty(rx_ring_mux.used_ring)) {
         // we want to be notified when this changes so we can continue
         // enqueuing packets to the client.
         rx_ring_cli.free_ring->notify_reader = true;
     } else {
         rx_ring_cli.free_ring->notify_reader = false;
     }
+
+    if (rx_ring_cli.used_ring->notify_reader && enqueued) {
+        sel4cp_notify(CLIENT_CH);
+    }
+
+    /* We want to inform the mux that more free buffers are available */
+    if (enqueued && rx_ring_mux.free_ring->notify_reader) {
+        sel4cp_notify_delayed(MUX_RX_CH);
+    }
+
+    if (!strcmp(sel4cp_name, "copy0")) {
+        new_log_buffer_entry(enqueued, ch, ring_size(rx_ring_mux.free_ring),
+                                        ring_size(rx_ring_mux.used_ring),
+                                        ring_size(rx_ring_cli.free_ring),
+                                        ring_size(rx_ring_cli.used_ring));
+    }
 }
 
 void notified(sel4cp_channel ch)
 {
     /* We have one job. */
-    process_rx_complete();
+    process_rx_complete(ch);
 }
 
 void init(void)

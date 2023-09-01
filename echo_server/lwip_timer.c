@@ -20,6 +20,6 @@ u32_t
 sys_now(void)
 {
     sel4cp_ppcall(TIMER_CH, sel4cp_msginfo_new(GET_TIME, 0));
-    uint64_t time_now = seL4_GetMR(0) * NS_IN_US;
+    uint64_t time_now = seL4_GetMR(0) / US_IN_MS;
     return time_now;
 }

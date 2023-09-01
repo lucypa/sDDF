@@ -21,6 +21,7 @@
 #include "echo.h"
 #include "timer.h"
 #include "cache.h"
+#include "log_buffer.h"
 
 #define TIMER  1
 #define RX_CH  2
@@ -287,6 +288,7 @@ process_tx_queue(void)
     int err;
     struct pbuf *current = state.head;
     struct pbuf *temp;
+    int enqueued = 0;
     while(current != NULL && !ring_empty(state.tx_ring.free_ring) && !ring_full(state.tx_ring.used_ring)) {
         uintptr_t buffer = alloc_tx_buffer(current->tot_len);
         if (buffer == NULL) {
@@ -307,12 +309,6 @@ process_tx_queue(void)
             copied += curr->len;
         }
 
-        /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
-        if (err) {
-            print("LWIP|ERROR: ARM VSpace clean failed: ");
-            puthex64(err);
-            print("\n");
-        }*/
         cleanCache(frame, frame + copied);
 
         /* insert into the used tx queue */
@@ -330,21 +326,30 @@ process_tx_queue(void)
         current = current->next_chain;
         pbuf_free(temp);
         state.num_pbufs--;
+        enqueued++;
     }
 
     // if curr != NULL, we need to make sure we don't lose it and can come back
     state.head = current;
     if (!state.head) {
-        // no longer need a notification from the tx mux. 
+        // no longer need a notification from the tx mux.
         cancel_free_ntfn(&state.tx_ring);
     } else {
         request_free_ntfn(&state.tx_ring);
     }
+
+    if (!strcmp(sel4cp_name, "client0")) {
+        new_log_buffer_entry(enqueued, TX_CH, ring_size(state.rx_ring.free_ring),
+                                        ring_size(state.rx_ring.used_ring),
+                                        ring_size(state.tx_ring.free_ring),
+                                        ring_size(state.tx_ring.used_ring));
+    }
 }
 
 void
-process_rx_queue(void)
+process_rx_queue(sel4cp_channel ch)
 {
+    int enqueued = 0;
     while (!ring_empty(state.rx_ring.used_ring)) {
         uintptr_t addr;
         unsigned int len;
@@ -359,6 +364,14 @@ process_rx_queue(void)
             print("LWIP|ERROR: netif.input() != ERR_OK");
             pbuf_free(p);
         }
+        enqueued++;
+    }
+
+    if (!strcmp(sel4cp_name, "client0")) {
+        new_log_buffer_entry(enqueued, ch, ring_size(state.rx_ring.free_ring),
+                                        ring_size(state.rx_ring.used_ring),
+                                        ring_size(state.tx_ring.free_ring),
+                                        ring_size(state.tx_ring.used_ring));
     }
 }
 
@@ -398,7 +411,7 @@ static void netif_status_callback(struct netif *netif)
         sel4cp_mr_set(0, ip4_addr_get_u32(netif_ip4_addr(netif)));
         sel4cp_mr_set(1, (state.mac[0] << 24) | (state.mac[1] << 16) | (state.mac[2] << 8) | (state.mac[3]));
         sel4cp_mr_set(2, (state.mac[4] << 24) | (state.mac[5] << 16));
-        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 1));
+        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 3));
 
         print("DHCP request finished, IP address for netif ");
         print(netif->name);
@@ -421,15 +434,6 @@ static void get_mac(void)
     } else {
         state.mac[5] = 0x1;
     }
-    /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
-    uint32_t palr = sel4cp_mr_get(0);
-    uint32_t paur = sel4cp_mr_get(1);
-    state.mac[0] = palr >> 24;
-    state.mac[1] = palr >> 16 & 0xff;
-    state.mac[2] = palr >> 8 & 0xff;
-    state.mac[3] = palr & 0xff;
-    state.mac[4] = paur >> 24;
-    state.mac[5] = paur >> 16 & 0xff;*/
 }
 
 void dump_log(void)
@@ -498,17 +502,11 @@ void init(void)
     request_used_ntfn(&state.tx_ring);
 
     if (notify_rx && state.rx_ring.free_ring->notify_reader) {
-        notify_rx = false;
-        sel4cp_notify_delayed(RX_CH);
+        sel4cp_notify(RX_CH);
     }
 
     if (notify_tx && state.tx_ring.used_ring->notify_reader) {
-        notify_tx = false;
-        if (!have_signal) {
-            sel4cp_notify_delayed(TX_CH);
-        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH) {
-            sel4cp_notify(TX_CH);
-        }
+        sel4cp_notify(TX_CH);
     }
 
     print(sel4cp_name);
@@ -519,17 +517,17 @@ void notified(sel4cp_channel ch)
 {
     switch(ch) {
         case RX_CH:
-            process_rx_queue();
+            process_rx_queue(ch);
             break;
         case TIMER:
             // check timeouts.
             sys_check_timeouts();
             // set a new timeout
-            set_timeout();
+            set_timeout();          
             break;
         case TX_CH:
             process_tx_queue();
-            process_rx_queue();
+            process_rx_queue(ch);
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
@@ -539,19 +537,11 @@ void notified(sel4cp_channel ch)
     
     if (notify_rx && state.rx_ring.free_ring->notify_reader) {
         notify_rx = false;
-        if (!have_signal) {
-            sel4cp_notify_delayed(RX_CH);
-        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + RX_CH) {
-            sel4cp_notify(RX_CH);
-        }
+        sel4cp_notify_delayed(RX_CH);
     }
 
     if (notify_tx && state.tx_ring.used_ring->notify_reader) {
         notify_tx = false;
-        if (!have_signal) {
-            sel4cp_notify_delayed(TX_CH);
-        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + TX_CH) {
-            sel4cp_notify(TX_CH);
-        }
+        sel4cp_notify(TX_CH);
     }
 }

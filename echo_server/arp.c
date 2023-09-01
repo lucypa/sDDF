@@ -5,6 +5,7 @@
 #include "lwip/ip_addr.h"
 #include "netif/etharp.h"
 
+#define RX_CH 0
 #define TX_CH 1
 #define REG_IP 0
 #define CLIENT_CH_START 2
@@ -142,7 +143,7 @@ arp_reply(const uint8_t *ethsrc_addr[ETH_HWADDR_LEN],
     // then padding of 10 bytes
     memset(&reply->padding, 0, 10);
     // then CRC (size of the arp packet (28B) + ethernet header (14B))
-    // reply->crc = inet_chksum(reply, 42);
+    reply->crc = inet_chksum(reply, 42);
 
     // clean cache
     cleanCache((uintptr_t)reply, (uintptr_t)reply + 64);
@@ -160,6 +161,7 @@ void
 process_rx_complete(void)
 {
     uint32_t transmitted = 0;
+    uint32_t read = 0;
     while (!ring_empty(rx_ring.used_ring)) {
         int err;
         uintptr_t addr;
@@ -176,6 +178,7 @@ process_rx_complete(void)
             struct arp_packet *pkt = (struct arp_packet *)addr;
             // CHeck if it's a probe (we don't care about announcements)
             if (pkt->opcode == PP_HTONS(ARP_REQUEST)) {
+                print("Got an ARP REQUEST\n");
                 // CHeck if it's for one of our clients.
                 client = match_arp_to_client(pkt->ipdst_addr);
                 if (client >= 0) {
@@ -193,6 +196,7 @@ process_rx_complete(void)
             }
         }
 
+        read++;
         err = enqueue_free(&rx_ring, addr, BUF_SIZE, cookie);
         assert(!err);
     }
@@ -200,6 +204,10 @@ process_rx_complete(void)
     if (transmitted) {
         // notify tx mux
         sel4cp_notify_delayed(TX_CH);
+    }
+
+    if (read && rx_ring.free_ring->notify_reader) {
+        sel4cp_notify(RX_CH);
     }
 }
 

@@ -7,6 +7,7 @@
 #include "util.h"
 #include "lwip/ip_addr.h"
 #include "netif/etharp.h"
+#include "log_buffer.h"
 
 uintptr_t rx_free_drv;
 uintptr_t rx_used_drv;
@@ -112,13 +113,14 @@ int get_client(uintptr_t dma_vaddr) {
 /*
  * Loop over driver and insert all used rx buffers to appropriate client queues.
  */
-void process_rx_complete(void)
+void process_rx_complete(sel4cp_channel ch)
 {
     bool notify_clients[NUM_CLIENTS] = {false};
     /* To avoid notifying the driver twice, used this global variable to 
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
+    int enqueued = 0;
 
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
@@ -143,6 +145,7 @@ void process_rx_complete(void)
 
         // Get MAC address and work out which client it is.
         int client = get_client(vaddr);
+        enqueued++;
         if (client >= 0 && !ring_full(state.rx_ring_clients[client].used_ring)) {
             /* enqueue it. */
             int err = enqueue_used(&state.rx_ring_clients[client], vaddr, len, cookie);
@@ -177,18 +180,24 @@ void process_rx_complete(void)
             state.rx_ring_clients[client].free_ring->notify_reader = false;
         }
     }
+
+    new_log_buffer_entry(enqueued, ch, ring_size(state.rx_ring_drv.free_ring),
+                                        ring_size(state.rx_ring_drv.used_ring),
+                                        ring_size(state.rx_ring_clients[0].free_ring),
+                                        ring_size(state.rx_ring_clients[0].used_ring));
 }
 
 // Loop over all client rings and return unused rx buffers to the driver
-bool process_rx_free(void)
+void process_rx_free(sel4cp_channel ch)
 {
     /* If we have enqueued to the driver's free ring and the free
      * ring was empty, we want to notify the driver. We also only want to
      * notify it only once.
      */
-    bool enqueued = false;
+    int was_empty = ring_empty(state.rx_ring_drv.free_ring);
+    int enqueued = 0;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
+        while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
             uintptr_t addr;
             unsigned int len;
             void *buffer;
@@ -204,38 +213,24 @@ bool process_rx_free(void)
 
             err = enqueue_free(&state.rx_ring_drv, paddr, len, buffer);
             assert(!err);
-            enqueued = true;
+            enqueued++;
         }
     }
 
-    /* We only want to notify the driver if the queue either was empty, or
-       it wasn't empty, but the driver interrupted us above and emptied it, 
-       and thus the number of packets we enqueued does not equal the ring_size now 
-       (So the driver could have missed an empty to full ntfn)
-       
-       We also could have enqueued packets into the free ring during 
-       process_rx_complete(), so we could have also missed this empty condition.
-       */
-    if ((enqueued || dropped) && state.rx_ring_drv.free_ring->notify_reader) {
+    if ((enqueued || dropped) && (state.rx_ring_drv.free_ring->notify_reader || was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 
-    for (int client = 0; client < NUM_CLIENTS; client++) {
-        if (state.rx_ring_drv.free_ring->notify_reader) {
-            // ask the client to notify when done.
-            state.rx_ring_clients[client].free_ring->notify_reader = true;
-        } else {
-            state.rx_ring_clients[client].free_ring->notify_reader = false;
-        }
-    }
-
-    return enqueued;
+    new_log_buffer_entry(enqueued, ch, ring_size(state.rx_ring_drv.free_ring),
+                                        ring_size(state.rx_ring_drv.used_ring),
+                                        ring_size(state.rx_ring_clients[0].free_ring),
+                                        ring_size(state.rx_ring_clients[0].used_ring));
 }
 
 void notified(sel4cp_channel ch)
 {
-    process_rx_complete();
-    process_rx_free();
+    process_rx_complete(ch);
+    process_rx_free(ch);
 }
 
 void init(void)

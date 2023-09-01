@@ -39,7 +39,7 @@ RINGBUFFERDIR=libsharedringbuffer
 
 BOARD_DIR := $(SEL4CP_SDK)/board/$(SEL4CP_BOARD)/$(SEL4CP_CONFIG)
 
-IMAGES := eth.elf lwip.elf benchmark.elf idle.elf mux_rx.elf mux_tx.elf copy.elf arp.elf timer.elf
+IMAGES := eth.elf lwip.elf benchmark.elf idle.elf mux_rx.elf mux_tx.elf copy.elf arp.elf timer.elf logger.elf
 CFLAGS := -mcpu=$(CPU) -mstrict-align -ffreestanding -g3 -O3 -Wall -Wno-unused-function -DNO_ASSERT
 
 LDFLAGS := -L$(BOARD_DIR)/lib -L.
@@ -105,10 +105,11 @@ BENCH_OBJS := benchmark/benchmark.o
 IDLE_OBJS := benchmark/idle.o
 ARP_OBJS := cache.o $(LWIPDIR)/core/inet_chksum.o $(LWIPDIR)/core/def.o arp.o libsharedringbuffer/shared_ringbuffer.o
 TIMER_OBJS := timer.o
+LOGGER_OBJS := logger.o
 
 OBJS := $(sort $(addprefix $(BUILD_DIR)/, $(ETH_OBJS) $(MUX_RX_OBJS) $(MUX_TX_OBJS)\
 	$(COPY_OBJS) $(BENCH_OBJS) $(IDLE_OBJS) \
-	$(LWIP_OBJS) $(ARP_OBJS) $(TIMER_OBJS)))
+	$(LWIP_OBJS) $(ARP_OBJS) $(TIMER_OBJS) $(LOGGER_OBJS))) 
 DEPS := $(OBJS:.o=.d)
 
 all: $(IMAGE_FILE)
@@ -146,6 +147,9 @@ $(BUILD_DIR)/arp.elf: $(addprefix $(BUILD_DIR)/, $(ARP_OBJS))
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
 $(BUILD_DIR)/timer.elf: $(addprefix $(BUILD_DIR)/, $(TIMER_OBJS))
+	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
+
+$(BUILD_DIR)/logger.elf: $(addprefix $(BUILD_DIR)/, $(LOGGER_OBJS))
 	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
 
 $(IMAGE_FILE) $(REPORT_FILE): $(addprefix $(BUILD_DIR)/, $(IMAGES)) eth.system

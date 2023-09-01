@@ -1,5 +1,6 @@
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "log_buffer.h"
 
 uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
@@ -96,11 +97,9 @@ get_client(uintptr_t addr)
 /*
  * Loop over all used tx buffers in client queues and enqueue to driver.
  */
-void process_tx_ready(void)
+void process_tx_ready(sel4cp_channel ch)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
-    uint64_t old_enqueued = enqueued;
     int err;
 
     for (int client = 0; client < NUM_CLIENTS; client++) {
@@ -121,9 +120,14 @@ void process_tx_ready(void)
         }
     }
 
-    if (state.tx_ring_drv.used_ring->notify_reader) {
+    if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
         sel4cp_notify_delayed(DRIVER);
     }
+
+    new_log_buffer_entry(enqueued, ch, ring_size(state.tx_ring_drv.free_ring),
+                                        ring_size(state.tx_ring_drv.used_ring),
+                                        ring_size(state.tx_ring_clients[0].free_ring),
+                                        ring_size(state.tx_ring_clients[0].used_ring));
 }
 
 /*
@@ -131,10 +135,11 @@ void process_tx_ready(void)
  * the respective clients. This will notify the clients if we have moved buffers
  * around and the client's TX free ring was empty.
  */
-void process_tx_complete(void)
+void process_tx_complete(sel4cp_channel ch)
 {
     // bitmap stores whether which clients need notifying.
     bool notify_clients[NUM_CLIENTS] = {false};
+    int enqueued = 0;
 
     while (!ring_empty(state.tx_ring_drv.free_ring)) {
         uintptr_t addr;
@@ -146,12 +151,14 @@ void process_tx_complete(void)
         assert(virt);
 
         int client = get_client(virt);
+        bool was_empty = ring_empty(state.tx_ring_clients[client].free_ring);
         err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
         assert(!err);
 
-        if (state.tx_ring_clients[client].free_ring->notify_reader) {
+        if (state.tx_ring_clients[client].free_ring->notify_reader || was_empty) {
             notify_clients[client] = true;
         }
+        enqueued++;
     }
 
     /* Loop over bitmap and see who we need to notify. */
@@ -160,16 +167,21 @@ void process_tx_complete(void)
             sel4cp_notify(client);
         }
     }
+
+    new_log_buffer_entry(enqueued, ch, ring_size(state.tx_ring_drv.free_ring),
+                                        ring_size(state.tx_ring_drv.used_ring),
+                                        ring_size(state.tx_ring_clients[0].free_ring),
+                                        ring_size(state.tx_ring_clients[0].used_ring));
 }
 
 void notified(sel4cp_channel ch)
 {
-    process_tx_complete();
-    process_tx_ready();
+    process_tx_ready(ch);
+    process_tx_complete(ch);
 
     // We only want to get a notification from the driver regarding 
     // new free tx buffers, if any
-    // of the clients need a notification. 
+    // of the clients need a notification.
     bool found = false;
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
@@ -216,6 +228,9 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
+
+    state.tx_ring_drv.used_ring->notify_reader = true;
+    state.tx_ring_drv.free_ring->notify_reader = true;
 
     return;
 }

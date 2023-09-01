@@ -10,6 +10,7 @@
 #include "eth.h"
 #include "shared_ringbuffer.h"
 #include "util.h"
+#include "log_buffer.h"
 
 #define IRQ_CH 0
 #define TX_CH  1
@@ -152,16 +153,19 @@ fill_rx_bufs(void)
         ring->write = new_write;
     }
 
-    if (!(hw_ring_empty(ring))) {
+    if (!(hw_ring_empty(ring)) && !ring_full(rx_ring.used_ring)) {
         /* Make sure rx is enabled */
         eth->rdar = RDAR_RDAR;
-        if (!(irq_mask & NETIRQ_RXF))
+        if (!(irq_mask & NETIRQ_RXF)) {
             enable_irqs(eth, IRQ_MASK);
-        __sync_synchronize();
+            __sync_synchronize();
+        }
         rx_ring.free_ring->notify_reader = false;
     } else {
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
         rx_ring.free_ring->notify_reader = true;
+        __sync_synchronize();
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        sel4cp_notify(RX_CH);
     }
 }
 
@@ -176,11 +180,7 @@ handle_rx(volatile struct enet_regs *eth)
     {
         /*
          * we can't process any packets because the queues are full
-         * so disable Rx irqs.
          */
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
-        __sync_synchronize();
-        rx_ring.used_ring->notify_writer = true;
         return;
     }
 
@@ -261,10 +261,17 @@ handle_tx(volatile struct enet_regs *eth)
     uintptr_t buffer = 0;
     unsigned int len = 0;
     void *cookie = NULL;
+    int enqueued = 0;
 
     while (!(hw_ring_full(&tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
         raw_tx(eth, buffer, len, cookie);
+        enqueued++;
     }
+
+    new_log_buffer_entry(enqueued, TX_CH, ring_size(tx_ring.free_ring),
+                                        ring_size(tx_ring.used_ring),
+                                        ring_size(rx_ring.free_ring),
+                                        ring_size(rx_ring.used_ring));
 }
 
 static void
@@ -274,6 +281,7 @@ complete_tx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &tx;
     unsigned int read = ring->read;
     int enqueued = 0;
+    bool was_empty = ring_empty(tx_ring.free_ring);
 
     while (!hw_ring_empty(ring) && !ring_full(tx_ring.free_ring)) {
         cookie = ring->cookies[read];
@@ -297,9 +305,14 @@ complete_tx(volatile struct enet_regs *eth)
         enqueued++;
     }
 
-    if (tx_ring.free_ring->notify_reader && enqueued) {
+    if ((tx_ring.free_ring->notify_reader || was_empty) && enqueued) {
         sel4cp_notify(TX_CH);
     }
+
+    new_log_buffer_entry(enqueued, IRQ_CH, ring_size(tx_ring.free_ring),
+                                        ring_size(tx_ring.used_ring),
+                                        ring_size(rx_ring.free_ring),
+                                        ring_size(rx_ring.used_ring));
 }
 
 static void

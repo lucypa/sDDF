@@ -178,12 +178,14 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
+    state.tx_ring_drv.free_ring->notify_reader = false;
     process_tx_complete();
     process_tx_ready();
 
     // We only want to get a notification from the driver regarding 
     // new free tx buffers, if any
     // of the clients need a notification. 
+    /*
     bool found = false;
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
@@ -194,6 +196,12 @@ void notified(sel4cp_channel ch)
     
     if (!found) {
         state.tx_ring_drv.free_ring->notify_reader = false;
+    }*/
+    for (int client = 0; client < NUM_CLIENTS; client++) {
+        if (state.tx_ring_clients[client].free_ring->notify_reader) {
+            state.tx_ring_drv.free_ring->notify_reader = true;
+            break;
+        }
     }
 }
 
