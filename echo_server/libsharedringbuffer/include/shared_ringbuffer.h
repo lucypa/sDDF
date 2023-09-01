@@ -25,6 +25,7 @@ typedef struct buff_desc {
 typedef struct ring_buffer {
     uint32_t write_idx;
     uint32_t read_idx;
+    uint32_t size;
     bool notify_writer;
     bool notify_reader;
     buff_desc_t buffers[SIZE];
@@ -45,7 +46,7 @@ typedef struct ring_handle {
  * @param buffer_init 1 indicates the read and write indices in shared memory need to be initialised.
  *                    0 inidicates they do not. Only one side of the shared memory regions needs to do this.
  */
-void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, int buffer_init);
+void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, int buffer_init, uint32_t free_size, uint32_t used_size);
 
 /**
  * Check if the ring buffer is empty.
@@ -56,7 +57,7 @@ void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, in
  */
 static inline int ring_empty(ring_buffer_t *ring)
 {
-    return !((ring->write_idx - ring->read_idx) % SIZE);
+    return !((ring->write_idx - ring->read_idx) % ring->size);
 }
 
 /**
@@ -69,7 +70,7 @@ static inline int ring_empty(ring_buffer_t *ring)
 static inline int ring_full(ring_buffer_t *ring)
 {
     assert((ring->write_idx - ring->read_idx) >= 0);
-    return !((ring->write_idx - ring->read_idx + 1) % SIZE);
+    return !((ring->write_idx - ring->read_idx + 1) % ring->size);
 }
 
 static inline int ring_size(ring_buffer_t *ring)
@@ -95,9 +96,9 @@ static inline int enqueue(ring_buffer_t *ring, uintptr_t buffer, unsigned int le
         return -1;
     }
 
-    ring->buffers[ring->write_idx % SIZE].encoded_addr = buffer;
-    ring->buffers[ring->write_idx % SIZE].len = len;
-    ring->buffers[ring->write_idx % SIZE].cookie = cookie;
+    ring->buffers[ring->write_idx % ring->size].encoded_addr = buffer;
+    ring->buffers[ring->write_idx % ring->size].len = len;
+    ring->buffers[ring->write_idx % ring->size].cookie = cookie;
 
     THREAD_MEMORY_RELEASE();
     ring->write_idx++;
@@ -121,11 +122,11 @@ static inline int dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    assert(ring->buffers[ring->read_idx % SIZE].encoded_addr != 0);
+    assert(ring->buffers[ring->read_idx % ring->size].encoded_addr != 0);
 
-    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
-    *len = ring->buffers[ring->read_idx % SIZE].len;
-    *cookie = ring->buffers[ring->read_idx % SIZE].cookie;
+    *addr = ring->buffers[ring->read_idx % ring->size].encoded_addr;
+    *len = ring->buffers[ring->read_idx % ring->size].len;
+    *cookie = ring->buffers[ring->read_idx % ring->size].cookie;
 
     THREAD_MEMORY_RELEASE();
     ring->read_idx++;
@@ -215,9 +216,9 @@ static int driver_dequeue(ring_buffer_t *ring, uintptr_t *addr, unsigned int *le
         return -1;
     }
 
-    *addr = ring->buffers[ring->read_idx % SIZE].encoded_addr;
-    *len = ring->buffers[ring->read_idx % SIZE].len;
-    *cookie = &ring->buffers[ring->read_idx % SIZE];
+    *addr = ring->buffers[ring->read_idx % ring->size].encoded_addr;
+    *len = ring->buffers[ring->read_idx % ring->size].len;
+    *cookie = &ring->buffers[ring->read_idx % ring->size];
 
     THREAD_MEMORY_RELEASE();
     ring->read_idx++;

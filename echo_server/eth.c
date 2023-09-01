@@ -17,6 +17,8 @@
 #define INIT   3
 #define ETH_CLI 3
 
+#define NUM_BUFFERS 512
+
 #define MDC_FREQ    20000000UL
 
 /* Memory regions. These all have to be here to keep compiler happy */
@@ -39,7 +41,6 @@ uintptr_t uart_base;
 
 _Static_assert((RX_COUNT + TX_COUNT) * 2 * PACKET_BUFFER_SIZE <= 0x200000, "Expect rx+tx buffers to fit in single 2MB page");
 _Static_assert(sizeof(ring_buffer_t) <= 0x200000, "Expect ring buffer ring to fit in single 2MB page");
-
 
 ring_ctx_t *rx = (void *)(uintptr_t)0x5400000; /* RX NIC Ring*/
 ring_ctx_t *tx = (void *)(uintptr_t)0x5200000; /* TX NIC Ring */
@@ -157,10 +158,13 @@ fill_rx_bufs(void)
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
             enable_irqs(eth, IRQ_MASK);
+        __sync_synchronize();
         rx_ring.free_ring->notify_reader = false;
     } else {
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
         rx_ring.free_ring->notify_reader = true;
+        __sync_synchronize();
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        sel4cp_notify(RX_CH);
     }
 }
 
@@ -170,7 +174,6 @@ handle_rx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = rx;
     int num = 0;
     unsigned int read = ring->read;
-    int og_size = ring_size(rx_ring.used_ring);
 
     if (ring_full(rx_ring.used_ring))
     {
@@ -179,6 +182,7 @@ handle_rx(volatile struct enet_regs *eth)
          * so disable Rx irqs.
          */
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        __sync_synchronize();
         rx_ring.used_ring->notify_writer = true;
         return;
     }
@@ -273,6 +277,7 @@ complete_tx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = tx;
     unsigned int read = ring->read;
     int enqueued = 0;
+    bool was_empty = ring_empty(tx_ring.free_ring);
 
     bool hw_was_full = hw_ring_full(ring);
 
@@ -336,7 +341,7 @@ eth_setup(void)
 {
     get_mac_addr(eth, mac);
     sel4cp_dbg_puts("MAC: ");
-    //dump_mac(mac);
+    // dump_mac(mac);
     sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
@@ -422,17 +427,18 @@ eth_setup(void)
 
 void init(void)
 {
-    //print(sel4cp_name);
-    //print(": elf PD init function running\n");
+    print(sel4cp_name);
+    print(": elf PD init function running\n");
 
     eth_setup();
 
     /* Set up shared memory regions */
-    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0);
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
+    ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
-    sel4cp_notify(INIT);
-    /* Now wait for notification that buffers are initialised */
+    tx_ring.used_ring->notify_reader = true;
+    // check if we have any requests to transmit.
+    handle_tx(eth);
 }
 
 seL4_MessageInfo_t
@@ -450,7 +456,8 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
     return sel4cp_msginfo_new(0, 0);
 }
 
-void notified(sel4cp_channel ch)
+void
+notified(sel4cp_channel ch)
 {
     switch(ch) {
         case IRQ_CH:
