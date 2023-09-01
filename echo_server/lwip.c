@@ -398,7 +398,7 @@ static void netif_status_callback(struct netif *netif)
         sel4cp_mr_set(0, ip4_addr_get_u32(netif_ip4_addr(netif)));
         sel4cp_mr_set(1, (state.mac[0] << 24) | (state.mac[1] << 16) | (state.mac[2] << 8) | (state.mac[3]));
         sel4cp_mr_set(2, (state.mac[4] << 24) | (state.mac[5] << 16));
-        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 1));
+        sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 3));
 
         print("DHCP request finished, IP address for netif ");
         print(netif->name);
@@ -499,7 +499,11 @@ void init(void)
 
     if (notify_rx && state.rx_ring.free_ring->notify_reader) {
         notify_rx = false;
-        sel4cp_notify_delayed(RX_CH);
+        if (!have_signal) {
+            sel4cp_notify_delayed(RX_CH);
+        } else if (signal != BASE_OUTPUT_NOTIFICATION_CAP + RX_CH) {
+            sel4cp_notify(RX_CH);
+        }
     }
 
     if (notify_tx && state.tx_ring.used_ring->notify_reader) {

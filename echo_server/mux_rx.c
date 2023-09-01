@@ -187,6 +187,7 @@ bool process_rx_free(void)
      * notify it only once.
      */
     bool enqueued = false;
+    bool was_empty = ring_empty(state.rx_ring_drv.free_ring);
     for (int i = 0; i < NUM_CLIENTS; i++) {
         while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
             uintptr_t addr;
@@ -216,7 +217,7 @@ bool process_rx_free(void)
        We also could have enqueued packets into the free ring during 
        process_rx_complete(), so we could have also missed this empty condition.
        */
-    if ((enqueued || dropped) && state.rx_ring_drv.free_ring->notify_reader) {
+    if ((enqueued || dropped) && (state.rx_ring_drv.free_ring->notify_reader || was_empty)) {
         sel4cp_notify_delayed(DRIVER_CH);
     }
 

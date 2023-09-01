@@ -121,7 +121,7 @@ void process_tx_ready(void)
         }
     }
 
-    if (state.tx_ring_drv.used_ring->notify_reader) {
+    if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
         sel4cp_notify_delayed(DRIVER);
     }
 }

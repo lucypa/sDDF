@@ -78,27 +78,21 @@ void process_rx_complete(void)
         enqueued += 1;
     }
 
-    if (rx_ring_cli.used_ring->notify_reader && enqueued) {
-        sel4cp_notify_delayed(CLIENT_CH);
-    }
-
-    /* We want to inform the mux that more free buffers are available */
-    if (enqueued && rx_ring_mux.free_ring->notify_reader) {
-        if (have_signal && signal == BASE_OUTPUT_NOTIFICATION_CAP + CLIENT_CH) {
-            // We need to notify the client, but this should
-            // happen first. 
-            sel4cp_notify(CLIENT_CH);
-        }
-
-        sel4cp_notify_delayed(MUX_RX_CH);
-    }
-
-    if (!ring_empty(rx_ring_mux.used_ring) || rx_ring_mux.free_ring->notify_reader) {
+    if (!ring_empty(rx_ring_mux.used_ring)) {
         // we want to be notified when this changes so we can continue
         // enqueuing packets to the client.
         rx_ring_cli.free_ring->notify_reader = true;
     } else {
         rx_ring_cli.free_ring->notify_reader = false;
+    }
+
+    if (rx_ring_cli.used_ring->notify_reader && enqueued) {
+        sel4cp_notify(CLIENT_CH);
+    }
+
+    /* We want to inform the mux that more free buffers are available */
+    if (enqueued && rx_ring_mux.free_ring->notify_reader) {
+        sel4cp_notify_delayed(MUX_RX_CH);
     }
 }
 

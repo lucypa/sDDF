@@ -160,8 +160,10 @@ fill_rx_bufs(void)
         __sync_synchronize();
         rx_ring.free_ring->notify_reader = false;
     } else {
-        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
         rx_ring.free_ring->notify_reader = true;
+        __sync_synchronize();
+        enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
+        sel4cp_notify(RX_CH);
     }
 }
 
@@ -274,6 +276,7 @@ complete_tx(volatile struct enet_regs *eth)
     ring_ctx_t *ring = &tx;
     unsigned int read = ring->read;
     int enqueued = 0;
+    bool was_empty = ring_empty(tx_ring.free_ring);
 
     while (!hw_ring_empty(ring) && !ring_full(tx_ring.free_ring)) {
         cookie = ring->cookies[read];
@@ -297,7 +300,7 @@ complete_tx(volatile struct enet_regs *eth)
         enqueued++;
     }
 
-    if (tx_ring.free_ring->notify_reader && enqueued) {
+    if (was_empty && enqueued) {
         sel4cp_notify(TX_CH);
     }
 }
