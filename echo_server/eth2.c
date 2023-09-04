@@ -15,6 +15,8 @@
 #define TX_CH 1
 #define ETH_INIT 0
 
+#define NUM_BUFFERS 512
+
 /* Memory regions. These all have to be here to keep compiler happy */
 uintptr_t hw_ring_buffer_vaddr;
 uintptr_t hw_ring_buffer_paddr;
@@ -85,17 +87,10 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
-    tx_ring.used_ring->notify_reader = false;
-
     while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
         raw_tx(eth, buffer, len, cookie);
     }
 
-    if (!(hw_ring_full(tx))) {
-        tx_ring.used_ring->notify_reader = true;
-    } else {
-        tx_ring.used_ring->notify_reader = false;
-    }
 }
 
 seL4_MessageInfo_t
@@ -131,5 +126,5 @@ void init(void)
     sel4cp_dbg_puts(sel4cp_name);
     sel4cp_dbg_puts(": elf PD init function running\n");
 
-    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0);
+    ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 }

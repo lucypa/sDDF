@@ -99,7 +99,6 @@ get_client(uintptr_t addr)
  */
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
     uint64_t old_enqueued = enqueued;
     bool driver_ntfn = false;
@@ -131,13 +130,6 @@ void process_tx_ready(void)
 
                 enqueued += 1;
             }
-
-            if (state.tx_ring_clients[client].free_ring->notify_reader) {
-                /* If any of the clients are requesting a notification, 
-                    then ensure the driver notifies mux when transmit is finished
-                    so it can notify the client. */
-                driver_ntfn = true;
-            }
         }
 
         // we haven't processed any packets since last loop, exit.
@@ -145,13 +137,8 @@ void process_tx_ready(void)
     }
 
     if (state.tx_ring_drv.used_ring->notify_reader) {
-        //sel4cp_ppcall(DRIVER_SEND, sel4cp_msginfo_new(0, 0));
         sel4cp_notify_delayed(DRIVER_SEND);
     }
-
-    /* Ensure we get a notification when transmit is complete
-      so we can dequeue free buffers and return them to the client. */
-    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 /*
@@ -180,10 +167,6 @@ void process_tx_complete(void)
 
         if (state.tx_ring_clients[client].free_ring->notify_reader) {
             notify_clients[client] = true;
-            /* If any of the clients are requesting a notification, 
-                then ensure the driver notifies tx mux so we can notify 
-                the client. */
-            driver_ntfn = true;
         }
     }
 
@@ -193,29 +176,12 @@ void process_tx_complete(void)
             sel4cp_notify(client);
         }
     }
-    state.tx_ring_drv.free_ring->notify_reader = driver_ntfn;
 }
 
 void notified(sel4cp_channel ch)
 {
-    state.tx_ring_clients[0].used_ring->notify_reader = false;
     process_tx_complete();
     process_tx_ready();
-
-    // We only want to get a notification from the driver regarding 
-    // new free tx buffers, if any
-    // of the clients need a notification. 
-    bool found = false;
-    for (int client = 0; client < NUM_CLIENTS; client++) {
-        if (state.tx_ring_clients[client].free_ring->notify_reader) {
-            state.tx_ring_drv.free_ring->notify_reader = true;
-            found = true;
-        }
-    }
-    
-    if (!found) {
-        state.tx_ring_drv.free_ring->notify_reader = false;
-    }
 }
 
 void init(void)
@@ -250,6 +216,8 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
+    state.tx_ring_drv.used_ring->notify_reader = true;
+    state.tx_ring_drv.free_ring->notify_reader = true;
 
     return;
 }

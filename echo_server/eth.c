@@ -436,9 +436,7 @@ void init(void)
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
-    tx_ring.used_ring->notify_reader = true;
-    // check if we have any requests to transmit.
-    handle_tx(eth);
+    sel4cp_notify(ETH_CLI);
 }
 
 seL4_MessageInfo_t

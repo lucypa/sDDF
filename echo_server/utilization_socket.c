@@ -23,7 +23,7 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
-#define NUM_CORES 4
+#define NUM_CORES 1
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.
@@ -87,7 +87,6 @@ struct idle_counters idle_counts;
 uint64_t start[4];
 uint64_t idle_ccount_start[4];
 uint64_t idle_overflow_start[4];
-
 
 static inline void my_reverse(char s[])
 {
@@ -159,7 +158,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
                 idle_overflow_start[i] = idle_counts.bench[i]->overflows;
             }
 
-            sel4cp_notify(START_PMU);
+            //sel4cp_notify(START_PMU);
         }
     } else if (msg_match(data_packet_str, STOP)) {
         print(sel4cp_name);
@@ -170,19 +169,28 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
 
         if (!strcmp(sel4cp_name, "client0")) {
             for (int i = 0; i < NUM_CORES; i++) {
-                total += (idle_counts.bench[i]->ts - start[i]);
+                if (idle_counts.bench[i]->ts < start[i]) {
+                    total += ULONG_MAX - start[i] + idle_counts.bench[i]->ts + 1;
+                } else {
+                    total += (idle_counts.bench[i]->ts - start[i]);
+                }
                 total += ULONG_MAX * (idle_counts.bench[i]->overflows - idle_overflow_start[i]);
-                idle += idle_counts.bench[i]->ccount - idle_ccount_start[i];
+
+                if (idle_counts.bench[i]->ccount < idle_ccount_start[i]) {
+                    idle += ULONG_MAX - idle_ccount_start[i] + idle_counts.bench[i]->ccount + 1;
+                } else {
+                    idle += idle_counts.bench[i]->ccount - idle_ccount_start[i];
+                }
             }
         }
 
-        char tbuf[16];
+        char tbuf[32];
         my_itoa(total, tbuf);
 
-        char ibuf[16];
+        char ibuf[32];
         my_itoa(idle, ibuf);
 
-        char buffer[100];
+        char buffer[120];
 
         int len = strlen(tbuf) + strlen(ibuf) + 2;
         char lbuf[16];
@@ -199,7 +207,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         tcp_shutdown(pcb, 0, 1);
 
         if (!strcmp(sel4cp_name, "client0")) { 
-            sel4cp_notify(STOP_PMU);
+            //sel4cp_notify(STOP_PMU);
         }
     } else if (msg_match(data_packet_str, QUIT)) {
         /* Do nothing for now */

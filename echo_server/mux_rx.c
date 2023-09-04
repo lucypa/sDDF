@@ -119,13 +119,6 @@ void process_rx_complete(void)
         determine whether we need to notify the driver in 
         process_rx_free() as we dropped some packets */
     dropped = 0;
-<<<<<<< HEAD
-    bool rx_free_was_empty = ring_empty(state.rx_ring_drv.free_ring);
-
-    /* We don't need a notification from the driver... */
-    state.rx_ring_drv.used_ring->notify_reader = false;
-=======
->>>>>>> dev
 
     while (!ring_empty(state.rx_ring_drv.used_ring)) {
         uintptr_t addr = 0;
@@ -161,12 +154,6 @@ void process_rx_complete(void)
                 notify_clients[client] = true;
             }
 
-            if (rx_free_was_empty) {
-                // ask the client to notify when done.
-                state.rx_ring_clients[client].free_ring->notify_reader = true;
-            } else {
-                state.rx_ring_clients[client].free_ring->notify_reader = false;
-            }
         } else {
             // either the packet is not for us, or the client queue is full.
             // return the buffer to the driver.
@@ -304,6 +291,9 @@ void init(void)
     }
     // ensure we get a notification when a packet comes in
     state.rx_ring_drv.used_ring->notify_reader = true;
+    state.rx_ring_clients[0].used_ring->notify_reader = true;
+    state.rx_ring_clients[1].used_ring->notify_reader = true;
+    state.rx_ring_clients[2].used_ring->notify_reader = true;
     // Notify the driver that we are ready to receive
     sel4cp_notify(DRIVER_CH);
 

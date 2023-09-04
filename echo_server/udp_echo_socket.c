@@ -20,8 +20,10 @@
 #include "util.h"
 
 #define UDP_ECHO_PORT 1235
+#define NUM_LOOPS 10
 
 static struct udp_pcb *udp_socket;
+uintptr_t data;
 
 static const char *err_strerr[] = {
   "Ok.",                    /* ERR_OK          0  */
@@ -58,6 +60,17 @@ lwip_strerr(err_t err)
   return err_strerr[-err];
 }
 
+static void
+calculate_checksum(struct pbuf *p)
+{
+    char *data_str = (char *)data;
+    pbuf_copy_partial(p, (void *)data, p->tot_len, 0);
+
+    uint32_t checksum = 0;
+    for (int i = 0; i < p->tot_len; i++) {
+        checksum += data_str[i];
+    }
+}
 
 static void lwip_udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {

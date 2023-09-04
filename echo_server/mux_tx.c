@@ -22,7 +22,8 @@ uintptr_t uart_base;
 #define CLIENT_1 1
 #define ARP 2
 #define NUM_CLIENTS 3
-#define DRIVER 3
+#define DRIVER_SEND 3
+#define DRIVER_RECV 4
 #define NUM_BUFFERS 512
 #define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
@@ -98,9 +99,7 @@ get_client(uintptr_t addr)
  */
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
-    uint64_t old_enqueued = enqueued;
     int err;
 
     for (int client = 0; client < NUM_CLIENTS; client++) {
@@ -122,7 +121,7 @@ void process_tx_ready(void)
     }
 
     if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
-        sel4cp_notify_delayed(DRIVER);
+        sel4cp_notify_delayed(DRIVER_SEND);
     }
 }
 
@@ -216,6 +215,7 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
+    state.tx_ring_drv.used_ring->notify_reader = true;
 
     return;
 }

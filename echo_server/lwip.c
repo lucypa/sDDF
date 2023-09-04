@@ -203,6 +203,10 @@ alloc_tx_buffer(size_t length)
         return NULL;
     }
 
+    if (ring_size(state.tx_ring.free_ring) <= 1) {
+        request_free_ntfn(&state.tx_ring);
+    }
+
     return addr;
 }
 
@@ -399,11 +403,11 @@ static void netif_status_callback(struct netif *netif)
         sel4cp_mr_set(2, (state.mac[4] << 24) | (state.mac[5] << 16));
         sel4cp_ppcall(ARP, sel4cp_msginfo_new(0, 3));
 
-        print("DHCP request finished, IP address for netif ");
+        /*print("DHCP request finished, IP address for netif ");
         print(netif->name);
         print(" is: ");
         print(ip4addr_ntoa(netif_ip4_addr(netif)));
-        print("\n");
+        print("\n");*/
     }
 }
 
