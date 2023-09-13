@@ -66,9 +66,6 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_1_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_1_ID);
-    //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -102,9 +99,6 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
 {
     print("Utilisation details for PD: ");
     switch (pd_id) {
-        case PD_CLIENT_1_ID: print("CLIENT_1"); break;
-        case PD_COPY_1_ID: print("COPY_1"); break;
-        //case PD_TIMER_ID: print("TIMER"); break;
         default: print("CORE3"); break;
     }
     print(" (");
@@ -221,12 +215,6 @@ void notified(sel4cp_channel ch)
             uint64_t number_schedules;
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
-
-            sel4cp_benchmark_stop_tcb(PD_CLIENT_1_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_CLIENT_1_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_COPY_1_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_1_ID, kernel, entries, number_schedules, total);
 
             //sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
             //print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);

@@ -20,6 +20,7 @@
 #define NOTIFY_STOP 4
 #define PD_ETH_ID       1
 #define PD_MUX_RX       2
+#define PD_MUX_TX       3
 #define PD_ARP          8
 uintptr_t uart_base;
 
@@ -49,7 +50,7 @@ sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_ID);
-    //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX);
     //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP);
     seL4_BenchmarkResetLog();
 }
@@ -61,7 +62,7 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
     switch (pd_id) {
         case PD_ETH_ID: print("ETH DRIVER"); break;
         case PD_MUX_RX: print("MUX RX"); break;
-        case PD_ARP: print("MUX RX"); break;
+        case PD_MUX_TX: print("MUX TX"); break;
         default: print("CORE 0 TOTALS");
     }
     print(" (");
@@ -119,12 +120,9 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
 
-            /*sel4cp_benchmark_stop_tcb(PD_MUX_RX, &total, &number_schedules, &kernel, &entries);
+            sel4cp_benchmark_stop_tcb(PD_MUX_TX, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_MUX_RX, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_ARP, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_ARP, kernel, entries, number_schedules, total);
-            */
             THREAD_MEMORY_RELEASE();
             sel4cp_notify(NOTIFY_STOP);
             break;

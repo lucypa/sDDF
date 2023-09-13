@@ -45,8 +45,6 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_TX_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_CLI_ID);
     seL4_BenchmarkResetLog();
 }
 
@@ -55,8 +53,6 @@ print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_en
 {
     print("Utilisation details for PD: ");
     switch (pd_id) {
-        case PD_MUX_TX_ID: print("TX MUX"); break;
-        case PD_ETH_CLI_ID: print("ETH CLIENT"); break;
         default: print("CORE 2 TOTALS");
     }
     print(" (");
@@ -109,13 +105,6 @@ void notified(sel4cp_channel ch)
 
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
-            
-            sel4cp_benchmark_stop_tcb(PD_MUX_TX_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_TX_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_ETH_CLI_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_ETH_CLI_ID, kernel, entries, number_schedules, total);
-
             break;
         default:
             print("Bench thread notified on unexpected channel\n");

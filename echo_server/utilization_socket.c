@@ -23,7 +23,7 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
-#define NUM_CORES 1
+#define NUM_CORES 4
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.
@@ -158,7 +158,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
                 idle_overflow_start[i] = idle_counts.bench[i]->overflows;
             }
 
-            //sel4cp_notify(START_PMU);
+            sel4cp_notify(START_PMU);
         }
     } else if (msg_match(data_packet_str, STOP)) {
         print(sel4cp_name);
@@ -207,7 +207,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
         tcp_shutdown(pcb, 0, 1);
 
         if (!strcmp(sel4cp_name, "client0")) { 
-            //sel4cp_notify(STOP_PMU);
+            sel4cp_notify(STOP_PMU);
         }
     } else if (msg_match(data_packet_str, QUIT)) {
         /* Do nothing for now */
