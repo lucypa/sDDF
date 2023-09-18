@@ -122,6 +122,8 @@ void process_tx_ready(void)
 
             state.tx_ring_clients[client].used_ring->notify_reader = true;
 
+            THREAD_MEMORY_FENCE();
+
             if (ring_empty(state.tx_ring_clients[client].used_ring) || ring_full(state.tx_ring_drv.used_ring)) break;
 
             state.tx_ring_clients[client].used_ring->notify_reader = false;

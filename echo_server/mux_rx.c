@@ -168,6 +168,8 @@ void process_rx_complete(void)
         THREAD_MEMORY_FENCE();
 
         if (ring_empty(state.rx_ring_drv.used_ring)) break;
+
+        state.rx_ring_drv.used_ring->notify_reader = false;
     }
 
 
@@ -212,6 +214,8 @@ bool process_rx_free(void)
             }
 
             state.rx_ring_clients[i].free_ring->notify_reader = true;
+
+            THREAD_MEMORY_FENCE();
 
             if (ring_empty(state.rx_ring_clients[i].free_ring) || ring_full(state.rx_ring_drv.free_ring)) break;
 
