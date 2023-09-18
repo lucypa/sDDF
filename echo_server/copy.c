@@ -83,6 +83,9 @@ void process_rx_complete(void)
 
         THREAD_MEMORY_FENCE();
         if (ring_empty(rx_ring_mux.used_ring) || ring_empty(rx_ring_cli.free_ring)) break;
+
+        rx_ring_cli.free_ring->notify_reader = false;
+        rx_ring_mux.used_ring->notify_reader = false;
     }
 
 

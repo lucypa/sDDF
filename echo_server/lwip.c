@@ -329,17 +329,19 @@ process_tx_queue(void)
             state.num_pbufs--;
         }
 
+        // if curr != NULL, we need to make sure we don't lose it and can come back
+        state.head = current;
+
         request_free_ntfn(&state.tx_ring);
+
+        THREAD_MEMORY_FENCE();
 
         if (current == NULL ||
             ring_empty(state.tx_ring.free_ring) ||
-            ring_full(state.tx_ring.used_ring)
-           ) break;
+            ring_full(state.tx_ring.used_ring)) break;
 
+        cancel_free_ntfn(&state.tx_ring);
     }
-
-    // if curr != NULL, we need to make sure we don't lose it and can come back
-    state.head = current;
 }
 
 void
@@ -366,6 +368,8 @@ process_rx_queue(void)
         THREAD_MEMORY_FENCE();
 
         if (ring_empty(state.rx_ring.used_ring)) break;
+
+        cancel_used_ntfn(&state.rx_ring);
     }
 }
 

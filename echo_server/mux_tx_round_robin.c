@@ -98,7 +98,6 @@ get_client(uintptr_t addr)
  */
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
     uint64_t old_enqueued = enqueued;
     int err;
