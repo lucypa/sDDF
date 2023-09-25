@@ -91,6 +91,7 @@ get_client(uintptr_t addr)
     }
     print("MUX TX|ERROR: Buffer out of range\n");
     assert(0);
+    return NUM_CLIENTS;
 }
 
 /*
@@ -98,9 +99,7 @@ get_client(uintptr_t addr)
  */
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
-    uint64_t old_enqueued = enqueued;
     int err;
 
     for (int client = 0; client < NUM_CLIENTS; client++) {
@@ -111,6 +110,7 @@ void process_tx_ready(void)
             uintptr_t phys;
 
             err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
+            _unused(err);
             assert(!err);
             phys = get_phys_addr(addr);
             assert(phys);
@@ -142,6 +142,7 @@ void process_tx_complete(void)
         void *cookie;
         int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
         assert(!err);
+        _unused(err);
         uintptr_t virt = get_virt_addr(addr);
         assert(virt);
 
@@ -197,18 +198,21 @@ void init(void)
         uintptr_t addr = shared_dma_vaddr_cli0 + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[0], addr, BUF_SIZE, NULL);
         assert(!err);
+        _unused(err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
         assert(!err);
+        _unused(err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
         assert(!err);
+        _unused(err);
     }
 
     // We are higher priority than the clients, so we always need to be notified

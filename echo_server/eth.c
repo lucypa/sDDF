@@ -296,6 +296,7 @@ complete_tx(volatile struct enet_regs *eth)
         /* give the buffer back */
         buff_desc_t *desc = (buff_desc_t *)cookie;
         int err = enqueue_free(&tx_ring, desc->encoded_addr, desc->len, desc->cookie);
+        _unused(err);
         assert(!err);
         enqueued++;
     }

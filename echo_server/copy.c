@@ -33,11 +33,12 @@ void process_rx_complete(void)
             !ring_full(rx_ring_mux.free_ring) &&
             !ring_full(rx_ring_cli.used_ring)) {
 
-        uintptr_t m_addr, c_addr = 0;
-        unsigned int m_len, c_len = 0;
+        uintptr_t m_addr = 0, c_addr = 0;
+        unsigned int m_len = 0, c_len = 0;
         void *cookie = NULL;
         void *cookie2 = NULL;
         int err;
+        _unused(err);
 
         err = dequeue_used(&rx_ring_mux, &m_addr, &m_len, &cookie);
         assert(!err);
