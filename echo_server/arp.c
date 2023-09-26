@@ -100,10 +100,10 @@ match_arp_to_client(uint32_t addr)
 }
 
 int
-arp_reply(const uint8_t *ethsrc_addr[ETH_HWADDR_LEN],
-          const uint8_t *ethdst_addr[ETH_HWADDR_LEN],
-          const uint8_t *hwsrc_addr[ETH_HWADDR_LEN], const uint32_t ipsrc_addr,
-          const uint8_t *hwdst_addr[ETH_HWADDR_LEN], const uint32_t ipdst_addr)
+arp_reply(const uint8_t ethsrc_addr[ETH_HWADDR_LEN],
+          const uint8_t ethdst_addr[ETH_HWADDR_LEN],
+          const uint8_t hwsrc_addr[ETH_HWADDR_LEN], const uint32_t ipsrc_addr,
+          const uint8_t hwdst_addr[ETH_HWADDR_LEN], const uint32_t ipdst_addr)
 {
     int err = 0;
     uintptr_t addr;
@@ -168,6 +168,7 @@ process_rx_complete(void)
         int client = -1;
 
         err = dequeue_used(&rx_ring, &addr, &len, (void **)&cookie);
+        _unused(err);
         assert(!err);
 
         // Check if it's an ARP request 
@@ -180,11 +181,11 @@ process_rx_complete(void)
                 client = match_arp_to_client(pkt->ipdst_addr);
                 if (client >= 0) {
                     // if so, send a response. 
-                    if (!arp_reply(&mac_addrs[client],
-                                &pkt->ethsrc_addr,
-                                &mac_addrs[client],
+                    if (!arp_reply(mac_addrs[client],
+                                pkt->ethsrc_addr,
+                                mac_addrs[client],
                                 pkt->ipdst_addr,
-                                &pkt->hwsrc_addr,
+                                pkt->hwsrc_addr,
                                 pkt->ipsrc_addr))
                     {
                         transmitted++;

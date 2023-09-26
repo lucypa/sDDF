@@ -126,6 +126,7 @@ static inline void return_buffer(uintptr_t addr)
     FIXME: This full condition could change... */
     int err = enqueue_free(&(state.rx_ring), addr, BUF_SIZE, NULL);
     assert(!err);
+    _unused(err);
     notify_rx = true;
 }
 
@@ -185,7 +186,7 @@ alloc_tx_buffer(size_t length)
 {
     if (BUF_SIZE < length) {
         print("Requested buffer size too large.");
-        return NULL;
+        return (uintptr_t) NULL;
     }
 
     uintptr_t addr;
@@ -194,12 +195,12 @@ alloc_tx_buffer(size_t length)
 
     int err = dequeue_free(&(state.tx_ring), &addr, &len, &cookie);
     if (err) {
-        return NULL;
+        return (uintptr_t) NULL;
     }
 
     if (!addr) {
         print("LWIP|ERROR: dequeued a null buffer\n");
-        return NULL;
+        return (uintptr_t) NULL;
     }
 
     return addr;
@@ -248,7 +249,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 
     
     uintptr_t buffer = alloc_tx_buffer(p->tot_len);
-    if (buffer == NULL) {
+    if (buffer == (uintptr_t) NULL) {
         enqueue_pbufs(p);
         return ERR_OK;
     }
@@ -266,7 +267,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    cleanCache(frame, frame + copied);
+    cleanCache((unsigned long) frame, (unsigned long) frame + copied);
 
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
@@ -289,7 +290,7 @@ process_tx_queue(void)
     struct pbuf *temp;
     while(current != NULL && !ring_empty(state.tx_ring.free_ring) && !ring_full(state.tx_ring.used_ring)) {
         uintptr_t buffer = alloc_tx_buffer(current->tot_len);
-        if (buffer == NULL) {
+        if (buffer == (uintptr_t) NULL) {
             print("process_tx_queue() could not alloc_tx_buffer\n");
             break;
         }
@@ -313,7 +314,7 @@ process_tx_queue(void)
             puthex64(err);
             print("\n");
         }*/
-        cleanCache(frame, frame + copied);
+        cleanCache((unsigned long) frame, (unsigned long) frame + copied);
 
         /* insert into the used tx queue */
         err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);
@@ -437,9 +438,9 @@ void dump_log(void)
     for (int i = 0; i < NUM_BUFFERS * 2; i++) {
         print(logbuffer[i].action);
         print(",");
-        puthex64(logbuffer[i].pbuf_addr);
+        puthex64((uint64_t) logbuffer[i].pbuf_addr);
         print(",");
-        puthex64(logbuffer[i].dma_addr);
+        puthex64((uint64_t) logbuffer[i].dma_addr);
         print("\n");
     }
 }
@@ -458,6 +459,7 @@ void init(void)
         uintptr_t addr = shared_dma_vaddr_rx + (BUF_SIZE * i);
         int err = enqueue_free(&state.rx_ring, addr, BUF_SIZE, NULL);
         assert(!err);
+        _unused(err);
     }
 
     lwip_init();

@@ -189,12 +189,13 @@ bool process_rx_free(void)
     bool enqueued = false;
     bool was_empty = ring_empty(state.rx_ring_drv.free_ring);
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        while (!ring_empty(state.rx_ring_clients[i].free_ring)) { // && !ring_full(state.rx_ring_drv.free_ring)
-            uintptr_t addr;
-            unsigned int len;
-            void *buffer;
+        while (!ring_empty(state.rx_ring_clients[i].free_ring) && !ring_full(state.rx_ring_drv.free_ring)) {
+            uintptr_t addr = 0;
+            unsigned int len = 0;
+            void *buffer = NULL;
             int err = dequeue_free(&state.rx_ring_clients[i], &addr, &len, &buffer);
             assert(!err);
+            _unused(err);
 
             int paddr = get_phys_addr(addr);
             if (!paddr) {
@@ -284,6 +285,7 @@ void init(void)
         uintptr_t addr = shared_dma_paddr + (BUF_SIZE * i);
         int err = enqueue_free(&state.rx_ring_drv, addr, BUF_SIZE, NULL);
         assert(!err);
+        _unused(err);
     }
     // ensure we get a notification when a packet comes in
     state.rx_ring_drv.used_ring->notify_reader = true;
