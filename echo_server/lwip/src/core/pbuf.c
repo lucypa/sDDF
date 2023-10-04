@@ -286,7 +286,6 @@ pbuf_alloc(pbuf_layer layer, u16_t length, pbuf_type type)
       /* If pbuf is to be allocated in RAM, allocate memory for it. */
       p = (struct pbuf *)mem_malloc(alloc_len);
       if (p == NULL) {
-        print("pbuf_alloc PBUF_RAM: mem_malloc failed\n");
         return NULL;
       }
       pbuf_init_alloced_pbuf(p, LWIP_MEM_ALIGN((void *)((u8_t *)p + SIZEOF_STRUCT_PBUF + offset)),

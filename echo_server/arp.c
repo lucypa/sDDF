@@ -293,5 +293,7 @@ init(void)
     mac_addrs[1][4] = 0;
     mac_addrs[1][5] = 1;
 
+    rx_ring.used_ring->notify_reader = true;
+
     return;
 }
