@@ -89,7 +89,7 @@
     <protection_domain name="bench0" priority="102" cpu="0">
         <program_image path="benchmark0.elf" />
         <map mr="uart" vaddr="0x5_000_000" perms="rw" cached="false" setvar_vaddr="uart_base" />
-        <protection_domain name="eth" priority="101" pp="true" id="1" cpu="0">
+        <protection_domain name="eth" priority="101" pp="true" id="1" cpu="0" budget="100" period="400">
             <program_image path="eth.elf" />
             <map mr="eth0" vaddr="0x2_000_000" perms="rw" cached="false"/>
 

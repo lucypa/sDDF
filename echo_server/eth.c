@@ -131,40 +131,41 @@ alloc_rx_buf(size_t buf_size, void **cookie)
 static void
 fill_rx_bufs(void)
 {
-    ring_ctx_t *ring = rx;
-    while (!hw_ring_full(ring)) {
-        /* request a buffer */
-        void *cookie = NULL;
-        uintptr_t phys = alloc_rx_buf(MAX_PACKET_SIZE, &cookie);
-        if (!phys) {
-            break;
-        }
-        uint16_t stat = RXD_EMPTY;
-        int idx = ring->write;
-        int new_write = idx + 1;
-        if (new_write == ring->cnt) {
-            new_write = 0;
-            stat |= WRAP;
-        }
-        ring->cookies[idx] = cookie;
-        update_ring_slot(ring, idx, phys, 0, stat);
+    ring_ctx_t *ring = &rx;
+    while (true) {
+        while (!hw_ring_full(ring) &&!ring_empty(rx_ring.free_ring)) {
+            /* request a buffer */
+            void *cookie = NULL;
+            uintptr_t phys = alloc_rx_buf(MAX_PACKET_SIZE, &cookie);
+            if (!phys) {
+                break;
+            }
+            uint16_t stat = RXD_EMPTY;
+            int idx = ring->write;
+            int new_write = idx + 1;
+            if (new_write == ring->cnt) {
+                new_write = 0;
+                stat |= WRAP;
+            }
+            ring->cookies[idx] = cookie;
+            update_ring_slot(ring, idx, phys, 0, stat);
 
-        THREAD_MEMORY_RELEASE();
-        ring->write = new_write;
+            THREAD_MEMORY_RELEASE();
+            ring->write = new_write;
+        }
+
+        rx_ring.free_ring->notify_reader = true;
+        THREAD_MEMORY_FENCE();
+        if (hw_ring_full(ring) || ring_empty(rx_ring.free_ring)) break;
     }
 
     if (!(hw_ring_empty(ring))) {
-        /* Make sure rx is enabled */
+        /* Make sure rx is enabled*/
         eth->rdar = RDAR_RDAR;
         if (!(irq_mask & NETIRQ_RXF))
             enable_irqs(eth, IRQ_MASK);
-        __sync_synchronize();
-        rx_ring.free_ring->notify_reader = false;
     } else {
-        rx_ring.free_ring->notify_reader = true;
-        __sync_synchronize();
         enable_irqs(eth, NETIRQ_TXF | NETIRQ_EBERR);
-        sel4cp_notify(RX_CH);
     }
 }
 
@@ -226,6 +227,7 @@ handle_rx(volatile struct enet_regs *eth)
      * by caller before the notify causes a context switch.
      */
     if (num && rx_ring.used_ring->notify_reader) {
+        rx_ring.used_ring->notify_reader = false;
         sel4cp_notify(RX_CH);
     }
 }
@@ -265,8 +267,16 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
-    while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        raw_tx(eth, buffer, len, cookie);
+    while (true) {
+        while (!(hw_ring_full(&tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+            raw_tx(eth, buffer, len, cookie);
+        }
+
+        tx_ring.used_ring->notify_reader = true;
+
+        THREAD_MEMORY_FENCE();
+
+        if (hw_ring_full(&tx) || ring_empty(tx_ring.used_ring)) break;
     }
 }
 
@@ -276,8 +286,7 @@ complete_tx(volatile struct enet_regs *eth)
     void *cookie;
     ring_ctx_t *ring = tx;
     unsigned int read = ring->read;
-    int enqueued = 0;
-    bool was_empty = ring_empty(tx_ring.free_ring);
+    uint32_t enqueued = 0;
 
     bool hw_was_full = hw_ring_full(ring);
 
@@ -303,7 +312,8 @@ complete_tx(volatile struct enet_regs *eth)
         enqueued++;
     }
 
-    if (tx_ring.free_ring->notify_reader && enqueued) {
+    if (enqueued && tx_ring.free_ring->notify_reader) {
+        tx_ring.free_ring->notify_reader = false;
         sel4cp_notify(TX_CH);
     }
 
@@ -436,22 +446,10 @@ void init(void)
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
-    sel4cp_notify(ETH_CLI);
-}
-
-seL4_MessageInfo_t
-protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
-{
-    switch (ch) {
-        /*case TX_CH:
-            handle_tx(eth);
-            break;*/
-        default:
-            sel4cp_dbg_puts("Received ppc on unexpected channel ");
-            puthex64(ch);
-            break;
-    }
-    return sel4cp_msginfo_new(0, 0);
+    tx_ring.used_ring->notify_reader = true;
+    rx_ring.used_ring->notify_reader = true;
+    // check if we have any requests to transmit.
+    handle_tx(eth);
 }
 
 void

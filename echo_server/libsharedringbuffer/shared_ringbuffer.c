@@ -10,6 +10,7 @@ void ring_init(ring_handle_t *ring, ring_buffer_t *free, ring_buffer_t *used, in
     ring->free_ring = free;
     ring->used_ring = used;
 
+    // TODO: This needs to check the ring size is a power of 2!
     if (buffer_init) {
         ring->free_ring->write_idx = 0;
         ring->free_ring->read_idx = 0;

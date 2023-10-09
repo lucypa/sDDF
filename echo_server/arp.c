@@ -142,7 +142,7 @@ arp_reply(const uint8_t *ethsrc_addr[ETH_HWADDR_LEN],
     // then padding of 10 bytes
     memset(&reply->padding, 0, 10);
     // then CRC (size of the arp packet (28B) + ethernet header (14B))
-    // reply->crc = inet_chksum(reply, 42);
+    reply->crc = inet_chksum(reply, 42);
 
     // clean cache
     cleanCache((uintptr_t)reply, (uintptr_t)reply + 64);

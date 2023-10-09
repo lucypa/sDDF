@@ -19,9 +19,9 @@
 #include "echo.h"
 #include "util.h"
 
-#define UDP_ECHO_PORT 1235
 #define NUM_LOOPS 10
-
+#define UDP_ECHO_PORT 1235
+uintptr_t data;
 static struct udp_pcb *udp_socket;
 uintptr_t data;
 
