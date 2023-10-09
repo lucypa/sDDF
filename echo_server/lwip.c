@@ -233,6 +233,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
 {
     /* Grab an free TX buffer, copy pbuf data over,
     add to used tx ring, notify server */
+
     err_t ret = ERR_OK;
     int err;
 
@@ -266,7 +267,7 @@ lwip_eth_send(struct netif *netif, struct pbuf *p)
         copied += curr->len;
     }
 
-    cleanCache((unsigned long) frame, (unsigned long) frame + copied);
+    // cleanCache((unsigned long) frame, (unsigned long) frame + copied);
 
     /* insert into the used tx queue */
     err = enqueue_used(&(state.tx_ring), (uintptr_t)frame, copied, NULL);
@@ -311,7 +312,7 @@ process_tx_queue(void)
                 copied += curr->len;
             }
 
-            cleanCache(frame, frame + copied);
+            // cleanCache(frame, frame + copied);
 
             /* insert into the used tx queue */
             err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);
@@ -506,7 +507,7 @@ void init(void)
 
     setup_udp_socket();
     setup_utilization_socket();
-    setup_udp_send_socket();
+    // setup_udp_send_socket();
 
     request_used_ntfn(&state.rx_ring);
     request_used_ntfn(&state.tx_ring);

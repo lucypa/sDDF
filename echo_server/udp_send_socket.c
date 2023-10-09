@@ -8,7 +8,7 @@
 #include "util.h"
 #include "bench.h"
 
-#define NUM_PACKETS 1000
+#define NUM_PACKETS 10000
 
 static struct udp_pcb *udp_socket;
 

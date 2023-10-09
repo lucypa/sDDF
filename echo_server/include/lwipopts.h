@@ -24,7 +24,7 @@
 #define LWIP_DHCP                       1
 
 #define MEM_ALIGNMENT                   4
-#define MEM_SIZE                        0x10000
+#define MEM_SIZE                        0x40000
 
 #define ETHARP_SUPPORT_STATIC_ENTRIES   1
 #define SYS_LIGHTWEIGHT_PROT            0
