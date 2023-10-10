@@ -169,7 +169,7 @@ void process_rx_complete(void)
 
         if (ring_empty(state.rx_ring_drv.used_ring)) break;
 
-        state.rx_ring_drv.used_ring->notify_reader = false;
+        // state.rx_ring_drv.used_ring->notify_reader = false;
     }
 
 
@@ -243,9 +243,6 @@ void notified(sel4cp_channel ch)
 {
     process_rx_complete();
     process_rx_free();
-
-    // Ensure we get notified next time a packet comes in. 
-    state.rx_ring_drv.used_ring->notify_reader = true;
 }
 
 void init(void)

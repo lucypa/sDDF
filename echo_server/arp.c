@@ -201,6 +201,8 @@ process_rx_complete(void)
         // notify tx mux
         sel4cp_notify_delayed(TX_CH);
     }
+
+    rx_ring.used_ring->notify_reader = true;
 }
 
 void
@@ -276,6 +278,8 @@ init(void)
     /* Set up shared memory regions */
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
+
+    rx_ring.used_ring->notify_reader = true;
 
     /* Set up hardcoded mac addresses */
     mac_addrs[0][0] = 0x52;

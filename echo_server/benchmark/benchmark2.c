@@ -12,13 +12,12 @@
 #include "fence.h"
 #include "bench.h"
 #include "util.h"
+#include "pd_ids.h"
 #include "utilisation_benchmark.h"
 
 #define START 1
 #define STOP 2
 
-#define PD_MUX_TX_ID    3
-#define PD_ETH_CLI_ID   2
 uintptr_t uart_base;
 ccnt_t counter_values[8];
 counter_bitfield_t benchmark_bf;
@@ -52,9 +51,7 @@ static void
 print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_entries, uint64_t number_schedules, uint64_t total_util)
 {
     print("Utilisation details for PD: ");
-    switch (pd_id) {
-        default: print("CORE 2 TOTALS");
-    }
+    print_pd_name(pd_id);
     print(" (");
     puthex64(pd_id);
     print(")\n");

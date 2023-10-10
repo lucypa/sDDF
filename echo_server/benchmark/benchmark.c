@@ -12,6 +12,7 @@
 #include "fence.h"
 #include "bench.h"
 #include "util.h"
+#include "pd_ids.h"
 
 #define MAGIC_CYCLES 150
 #define ULONG_MAX 0xfffffffffffffffful
@@ -29,9 +30,6 @@
 
 #define NOTIFY_START 7
 #define NOTIFY_STOP 8
-
-#define PD_CLIENT_1_ID  7
-#define PD_COPY_1_ID    5
 
 uintptr_t uart_base;
 uintptr_t cyclecounters_vaddr;
@@ -98,9 +96,7 @@ static void
 print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_entries, uint64_t number_schedules, uint64_t total_util)
 {
     print("Utilisation details for PD: ");
-    switch (pd_id) {
-        default: print("CORE3"); break;
-    }
+    print_pd_name(pd_id);
     print(" (");
     puthex64(pd_id);
     print(")\n");
@@ -215,9 +211,6 @@ void notified(sel4cp_channel ch)
             uint64_t number_schedules;
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
-
-            //sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
-            //print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
             entries = seL4_BenchmarkFinalizeLog();

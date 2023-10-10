@@ -87,10 +87,17 @@ handle_tx(volatile struct enet_regs *eth)
     unsigned int len = 0;
     void *cookie = NULL;
 
-    while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
-        raw_tx(eth, buffer, len, cookie);
-    }
+    while (true) {
+        while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+            raw_tx(eth, buffer, len, cookie);
+        }
 
+        tx_ring.used_ring->notify_reader = true;
+
+        THREAD_MEMORY_FENCE();
+
+        if (hw_ring_full(tx) || ring_empty(tx_ring.used_ring)) break;
+    }
 }
 
 seL4_MessageInfo_t

@@ -12,17 +12,13 @@
 #include "fence.h"
 #include "bench.h"
 #include "util.h"
+#include "pd_ids.h"
 #include "utilisation_benchmark.h"
 
 #define START 1
 #define STOP 2
 #define NOTIFY_START 3
 #define NOTIFY_STOP 4
-#define PD_MUX_RX    2
-#define PD_COPY_0_ID    4
-#define PD_CLIENT_0_ID  5
-#define PD_ARP       8
-#define PD_TIMER_ID     9
 
 uintptr_t uart_base;
 
@@ -51,11 +47,6 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY_0_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT_0_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP);
     seL4_BenchmarkResetLog();
 }
 
@@ -63,14 +54,7 @@ static void
 print_benchmark_details(uint64_t pd_id, uint64_t kernel_util, uint64_t kernel_entries, uint64_t number_schedules, uint64_t total_util)
 {
     print("Utilisation details for PD: ");
-    switch (pd_id) {
-        case PD_COPY_0_ID: print("COPY_0"); break;
-        case PD_MUX_RX: print("ARP"); break;
-        case PD_ARP: print("MUX RX"); break;
-        case PD_CLIENT_0_ID: print("CLIENT_0"); break;
-        case PD_TIMER_ID: print("TIMER"); break;
-        default: print("CORE 1 TOTALS");
-    }
+    print_pd_name(pd_id);
     print(" (");
     puthex64(pd_id);
     print(")\n");
@@ -122,21 +106,6 @@ void notified(sel4cp_channel ch)
 
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
-            
-            sel4cp_benchmark_stop_tcb(PD_COPY_0_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY_0_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_CLIENT_0_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_CLIENT_0_ID, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_TIMER_ID, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_TIMER_ID, kernel, entries, number_schedules, total);
-            
-            sel4cp_benchmark_stop_tcb(PD_MUX_RX, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_RX, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_ARP, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_ARP, kernel, entries, number_schedules, total);
             
             THREAD_MEMORY_RELEASE();
             sel4cp_notify(NOTIFY_STOP);

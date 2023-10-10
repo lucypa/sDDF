@@ -131,9 +131,9 @@ alloc_rx_buf(size_t buf_size, void **cookie)
 static void
 fill_rx_bufs(void)
 {
-    ring_ctx_t *ring = &rx;
+    ring_ctx_t *ring = rx;
     while (true) {
-        while (!hw_ring_full(ring) &&!ring_empty(rx_ring.free_ring)) {
+        while (!hw_ring_full(ring) && !ring_empty(rx_ring.free_ring)) {
             /* request a buffer */
             void *cookie = NULL;
             uintptr_t phys = alloc_rx_buf(MAX_PACKET_SIZE, &cookie);
@@ -268,7 +268,7 @@ handle_tx(volatile struct enet_regs *eth)
     void *cookie = NULL;
 
     while (true) {
-        while (!(hw_ring_full(&tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
+        while (!(hw_ring_full(tx)) && !driver_dequeue(tx_ring.used_ring, &buffer, &len, &cookie)) {
             raw_tx(eth, buffer, len, cookie);
         }
 
@@ -276,7 +276,7 @@ handle_tx(volatile struct enet_regs *eth)
 
         THREAD_MEMORY_FENCE();
 
-        if (hw_ring_full(&tx) || ring_empty(tx_ring.used_ring)) break;
+        if (hw_ring_full(tx) || ring_empty(tx_ring.used_ring)) break;
     }
 }
 
@@ -350,9 +350,6 @@ static void
 eth_setup(void)
 {
     get_mac_addr(eth, mac);
-    sel4cp_dbg_puts("MAC: ");
-    // dump_mac(mac);
-    sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
     rx->cnt = RX_COUNT;
@@ -446,10 +443,10 @@ void init(void)
     ring_init(&rx_ring, (ring_buffer_t *)rx_free, (ring_buffer_t *)rx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&tx_ring, (ring_buffer_t *)tx_free, (ring_buffer_t *)tx_used, 0, NUM_BUFFERS, NUM_BUFFERS);
 
-    tx_ring.used_ring->notify_reader = true;
     rx_ring.used_ring->notify_reader = true;
     // check if we have any requests to transmit.
-    handle_tx(eth);
+    // handle_tx(eth);
+    sel4cp_notify(ETH_CLI);
 }
 
 void

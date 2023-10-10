@@ -110,12 +110,13 @@ void process_tx_ready(void)
         and it is an unecessary cost to loop through and change them before
         and after this function. As a quick hack this is instead in the notified function. 
     */
-    while(!ring_full(state.tx_ring_drv.used_ring)) {
+    /*while(!ring_full(state.tx_ring_drv.used_ring)) {
         old_enqueued = enqueued;
         // round robin over each client.
         for (int client = 0; client < NUM_CLIENTS; client++) {
             // Process a single used buffer at a time. 
             if (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
+                print("sending\n");
                 uintptr_t addr;
                 unsigned int len;
                 void *cookie;
@@ -134,9 +135,37 @@ void process_tx_ready(void)
 
         // we haven't processed any packets since last loop, exit.
         if (old_enqueued == enqueued) break;
+    }*/
+    for (int client = 0; client < NUM_CLIENTS; client++) {
+        while (true) {
+            while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
+                uintptr_t addr;
+                unsigned int len;
+                void *cookie;
+                uintptr_t phys;
+
+                err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
+                assert(!err);
+                phys = get_phys_addr(addr);
+                assert(phys);
+                err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
+                assert(!err);
+
+                enqueued += 1;
+            }
+
+            state.tx_ring_clients[client].used_ring->notify_reader = true;
+
+            THREAD_MEMORY_FENCE();
+
+            if (ring_empty(state.tx_ring_clients[client].used_ring) || ring_full(state.tx_ring_drv.used_ring)) break;
+
+            state.tx_ring_clients[client].used_ring->notify_reader = false;
+        }
     }
 
-    if (state.tx_ring_drv.used_ring->notify_reader) {
+    if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
+        state.tx_ring_drv.used_ring->notify_reader = false;
         sel4cp_notify_delayed(DRIVER_SEND);
     }
 }
@@ -150,29 +179,38 @@ void process_tx_complete(void)
 {
     // bitmap stores whether which clients need notifying.
     bool notify_clients[NUM_CLIENTS] = {false};
-    bool driver_ntfn = false;
+    while (true) {
+        while (!ring_empty(state.tx_ring_drv.free_ring)) {
+            uintptr_t addr;
+            unsigned int len;
+            void *cookie;
+            int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
+            assert(!err);
+            uintptr_t virt = get_virt_addr(addr);
+            assert(virt);
 
-    while (!ring_empty(state.tx_ring_drv.free_ring)) {
-        uintptr_t addr;
-        unsigned int len;
-        void *cookie;
-        int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
-        assert(!err);
-        uintptr_t virt = get_virt_addr(addr);
-        assert(virt);
+            int client = get_client(virt);
+            err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
+            assert(!err);
 
-        int client = get_client(virt);
-        err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
-        assert(!err);
-
-        if (state.tx_ring_clients[client].free_ring->notify_reader) {
-            notify_clients[client] = true;
+            if (state.tx_ring_clients[client].free_ring->notify_reader) {
+                notify_clients[client] = true;
+            }
         }
+
+        state.tx_ring_drv.free_ring->notify_reader = true;
+
+        THREAD_MEMORY_FENCE();
+
+        if (ring_empty(state.tx_ring_drv.free_ring)) break;
+
+        state.tx_ring_drv.free_ring->notify_reader = false;
     }
 
     /* Loop over bitmap and see who we need to notify. */
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (notify_clients[client]) {
+            state.tx_ring_clients[client].free_ring->notify_reader = false;
             sel4cp_notify(client);
         }
     }
@@ -216,7 +254,7 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
-    state.tx_ring_drv.used_ring->notify_reader = true;
+    // state.tx_ring_drv.used_ring->notify_reader = true;
     state.tx_ring_drv.free_ring->notify_reader = true;
 
     return;
