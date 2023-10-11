@@ -48,7 +48,7 @@ sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH_ID);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX);
+    // seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ARP);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY0);
     seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT0);
@@ -117,8 +117,8 @@ void notified(sel4cp_channel ch)
             sel4cp_benchmark_stop_tcb(PD_ETH_ID, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_ETH_ID, kernel, entries, number_schedules, total);
 
-            sel4cp_benchmark_stop_tcb(PD_MUX_RX, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_RX, kernel, entries, number_schedules, total);
+            //sel4cp_benchmark_stop_tcb(PD_MUX_RX, &total, &number_schedules, &kernel, &entries);
+            //print_benchmark_details(PD_MUX_RX, kernel, entries, number_schedules, total);
 
             sel4cp_benchmark_stop_tcb(PD_MUX_TX, &total, &number_schedules, &kernel, &entries);
             print_benchmark_details(PD_MUX_TX, kernel, entries, number_schedules, total);

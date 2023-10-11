@@ -345,6 +345,10 @@ process_tx_queue(void)
 
         THREAD_MEMORY_FENCE();
 
+        if (current == NULL && state.num_pbufs > 0) {
+            print("Pbuf queue is empty but num pbufs > 0\n");
+        }
+
         if (current == NULL ||
             ring_empty(state.tx_ring.free_ring) ||
             ring_full(state.tx_ring.used_ring)) break;

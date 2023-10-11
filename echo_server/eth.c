@@ -317,9 +317,9 @@ complete_tx(volatile struct enet_regs *eth)
         sel4cp_notify(TX_CH);
     }
 
-    if (hw_was_full && enqueued) {
+    /*if (hw_was_full && enqueued) {
         sel4cp_notify(ETH_CLI);
-    }
+    }*/
 }
 
 static void
@@ -445,8 +445,8 @@ void init(void)
 
     rx_ring.used_ring->notify_reader = true;
     // check if we have any requests to transmit.
-    // handle_tx(eth);
-    sel4cp_notify(ETH_CLI);
+    handle_tx(eth);
+    //sel4cp_notify(ETH_CLI);
 }
 
 void
@@ -464,9 +464,9 @@ notified(sel4cp_channel ch)
         case RX_CH:
             fill_rx_bufs();
             break;
-        /*case TX_CH:
+        case TX_CH:
             handle_tx(eth);
-            break;*/
+            break;
         default:
             print("eth driver: received notification on unexpected channel: ");
             puthex64(ch);
