@@ -209,7 +209,6 @@ alloc_tx_buffer(size_t length)
 void
 enqueue_pbufs(struct pbuf *buff)
 {
-    request_free_ntfn(&state.tx_ring);
     if (state.head == NULL) {
         state.head = buff;
     } else {
@@ -288,59 +287,60 @@ process_tx_queue(void)
     int err;
     struct pbuf *current = state.head;
     struct pbuf *temp;
-    while(current != NULL && !ring_empty(state.tx_ring.free_ring) && !ring_full(state.tx_ring.used_ring)) {
-        uintptr_t buffer = alloc_tx_buffer(current->tot_len);
-        if (buffer == (uintptr_t) NULL) {
-            print("process_tx_queue() could not alloc_tx_buffer\n");
-            break;
-        }
-
-        unsigned char *frame = (unsigned char *)buffer;
-        /* Copy all buffers that need to be copied */
-        unsigned int copied = 0;
-        for (struct pbuf *curr = current; curr != NULL; curr = curr->next) {
-            // this ensures the pbufs get freed properly. 
-            unsigned char *buffer_dest = &frame[copied];
-            if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
-                /* Don't copy memory back into the same location */
-                memcpy(buffer_dest, curr->payload, curr->len);
+    while (true) {
+        while(current != NULL &&
+                !ring_empty(state.tx_ring.free_ring) &&
+                !ring_full(state.tx_ring.used_ring)) 
+        {
+            uintptr_t buffer = alloc_tx_buffer(current->tot_len);
+            if (buffer == NULL) {
+                print("process_tx_queue() could not alloc_tx_buffer\n");
+                break;
             }
-            copied += curr->len;
+
+            unsigned char *frame = (unsigned char *)buffer;
+            /* Copy all buffers that need to be copied */
+            unsigned int copied = 0;
+            for (struct pbuf *curr = current; curr != NULL; curr = curr->next) {
+                // this ensures the pbufs get freed properly. 
+                unsigned char *buffer_dest = &frame[copied];
+                if ((uintptr_t)buffer_dest != (uintptr_t)curr->payload) {
+                    /* Don't copy memory back into the same location */
+                    memcpy(buffer_dest, curr->payload, curr->len);
+                }
+                copied += curr->len;
+            }
+
+            cleanCache(frame, frame + copied);
+
+            /* insert into the used tx queue */
+            err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);
+            if (err) {
+                print("LWIP|ERROR: TX used ring full\n");
+                break;
+            }
+
+            /* Notify the server for next time we recv() */
+            notify_tx = true;
+
+            /* free the pbufs. */
+            temp = current;
+            current = current->next_chain;
+            pbuf_free(temp);
+            state.num_pbufs--;
         }
 
-        /*err = seL4_ARM_VSpace_Clean_Data(3, frame, frame + copied);
-        if (err) {
-            print("LWIP|ERROR: ARM VSpace clean failed: ");
-            puthex64(err);
-            print("\n");
-        }*/
-        cleanCache((unsigned long) frame, (unsigned long) frame + copied);
+        request_free_ntfn(&state.tx_ring);
 
-        /* insert into the used tx queue */
-        err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);
-        if (err) {
-            print("LWIP|ERROR: TX used ring full\n");
-            break;
-        }
+        if (current == NULL ||
+            ring_empty(state.tx_ring.free_ring) ||
+            ring_full(state.tx_ring.used_ring)
+           ) break;
 
-        /* Notify the server for next time we recv() */
-        notify_tx = true;
-
-        /* free the pbufs. */
-        temp = current;
-        current = current->next_chain;
-        pbuf_free(temp);
-        state.num_pbufs--;
     }
 
     // if curr != NULL, we need to make sure we don't lose it and can come back
     state.head = current;
-    if (!state.head) {
-        // no longer need a notification from the tx mux. 
-        cancel_free_ntfn(&state.tx_ring);
-    } else {
-        request_free_ntfn(&state.tx_ring);
-    }
 }
 
 void
@@ -543,7 +543,6 @@ void notified(sel4cp_channel ch)
             break;
         case TX_CH:
             process_tx_queue();
-            request_free_ntfn(&state.tx_ring);
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
