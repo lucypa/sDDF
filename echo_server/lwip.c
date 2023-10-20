@@ -506,7 +506,6 @@ void init(void)
 
     setup_udp_socket();
     setup_utilization_socket();
-    setup_udp_send_socket();
 
     request_used_ntfn(&state.rx_ring);
     request_used_ntfn(&state.tx_ring);
@@ -548,7 +547,6 @@ void notified(sel4cp_channel ch)
             break;
         case TX_CH:
             process_tx_queue();
-            continue_send();
             break;
         default:
             sel4cp_dbg_puts("lwip: received notification on unexpected channel\n");
