@@ -23,7 +23,7 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
-#define NUM_CORES 2
+#define NUM_CORES 4
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.
@@ -161,8 +161,8 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
             sel4cp_notify(START_PMU);
         }
     } else if (msg_match(data_packet_str, STOP)) {
-        print(sel4cp_name);
-        print(" measurement finished \n");;
+        //print(sel4cp_name);
+        //print(" measurement finished \n");;
 
         uint64_t total = 0;
         uint64_t idle = 0;
@@ -226,7 +226,7 @@ static err_t utilization_recv_callback(void *arg, struct tcp_pcb *pcb, struct pb
 
 static err_t utilization_accept_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
 {
-    print("Utilization connection established!\n");
+    //print("Utilization connection established!\n");
     err_t error = tcp_write(newpcb, WHOAMI, strlen(WHOAMI), TCP_WRITE_FLAG_COPY);
     if (error) {
         print("Failed to send WHOAMI message through utilization peer\n");

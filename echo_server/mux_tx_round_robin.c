@@ -7,6 +7,10 @@ uintptr_t tx_free_cli0;
 uintptr_t tx_used_cli0;
 uintptr_t tx_free_cli1;
 uintptr_t tx_used_cli1;
+uintptr_t tx_free_cli2;
+uintptr_t tx_used_cli2;
+uintptr_t tx_free_cli3;
+uintptr_t tx_used_cli3;
 uintptr_t tx_free_arp;
 uintptr_t tx_used_arp;
 
@@ -14,16 +18,22 @@ uintptr_t shared_dma_vaddr_cli0;
 uintptr_t shared_dma_paddr_cli0;
 uintptr_t shared_dma_vaddr_cli1;
 uintptr_t shared_dma_paddr_cli1;
+uintptr_t shared_dma_vaddr_cli2;
+uintptr_t shared_dma_paddr_cli2;
+uintptr_t shared_dma_vaddr_cli3;
+uintptr_t shared_dma_paddr_cli3;
 uintptr_t shared_dma_vaddr_arp;
 uintptr_t shared_dma_paddr_arp;
 uintptr_t uart_base;
 
 #define CLIENT_0 0
 #define CLIENT_1 1
-#define ARP 2
-#define NUM_CLIENTS 3
-#define DRIVER_SEND 3
-#define DRIVER_RECV 4
+#define CLIENT_2 2
+#define CLIENT_3 3
+#define ARP 4
+#define NUM_CLIENTS 5
+#define DRIVER_SEND 5
+#define DRIVER_RECV 5
 #define NUM_BUFFERS 512
 #define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
@@ -47,6 +57,12 @@ get_phys_addr(uintptr_t virtual)
     } else if (virtual >= shared_dma_vaddr_cli1 && virtual < shared_dma_vaddr_cli1 + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_cli1;
         base = shared_dma_paddr_cli1;
+    } else if (virtual >= shared_dma_vaddr_cli2 && virtual < shared_dma_vaddr_cli2 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli2;
+        base = shared_dma_paddr_cli2;
+    } else if (virtual >= shared_dma_vaddr_cli3 && virtual < shared_dma_vaddr_cli3 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli3;
+        base = shared_dma_paddr_cli3;
     } else if (virtual >= shared_dma_vaddr_arp && virtual < shared_dma_vaddr_arp + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_arp;
         base = shared_dma_paddr_arp;
@@ -69,6 +85,12 @@ get_virt_addr(uintptr_t phys)
     } else if (phys >= shared_dma_paddr_cli1 && phys < shared_dma_paddr_cli1 + DMA_SIZE) {
         offset = phys - shared_dma_paddr_cli1;
         base = shared_dma_vaddr_cli1;
+    } else if (phys >= shared_dma_paddr_cli2 && phys < shared_dma_paddr_cli2 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli2;
+        base = shared_dma_vaddr_cli2;
+    } else if (phys >= shared_dma_paddr_cli3 && phys < shared_dma_paddr_cli3 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli3;
+        base = shared_dma_vaddr_cli3;
     }else if (phys >= shared_dma_paddr_arp && phys < shared_dma_paddr_arp + DMA_SIZE) {
         offset = phys - shared_dma_paddr_arp;
         base = shared_dma_vaddr_arp;
@@ -87,6 +109,10 @@ get_client(uintptr_t addr)
         return CLIENT_0;
     } else if (addr >= shared_dma_vaddr_cli1 && addr < shared_dma_vaddr_cli1 + DMA_SIZE) {
         return CLIENT_1;
+    } else if (addr >= shared_dma_vaddr_cli2 && addr < shared_dma_vaddr_cli2 + DMA_SIZE) {
+        return CLIENT_2;
+    } else if (addr >= shared_dma_vaddr_cli3 && addr < shared_dma_vaddr_cli3 + DMA_SIZE) {
+        return CLIENT_3;
     }else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
         return ARP;
     }
@@ -104,19 +130,12 @@ void process_tx_ready(void)
     bool driver_ntfn = false;
     int err;
 
-    /* 
-        We should negate the need for a notification inside this loop, 
-        but given we loop around each client at a time, this would not change anything
-        and it is an unecessary cost to loop through and change them before
-        and after this function. As a quick hack this is instead in the notified function. 
-    */
-    /*while(!ring_full(state.tx_ring_drv.used_ring)) {
+    while(!ring_full(state.tx_ring_drv.used_ring)) {
         old_enqueued = enqueued;
         // round robin over each client.
         for (int client = 0; client < NUM_CLIENTS; client++) {
             // Process a single used buffer at a time. 
             if (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-                print("sending\n");
                 uintptr_t addr;
                 unsigned int len;
                 void *cookie;
@@ -130,43 +149,18 @@ void process_tx_ready(void)
                 assert(!err);
 
                 enqueued += 1;
+
+                state.tx_ring_clients[client].used_ring->notify_reader = true;
             }
         }
 
         // we haven't processed any packets since last loop, exit.
         if (old_enqueued == enqueued) break;
-    }*/
-    for (int client = 0; client < NUM_CLIENTS; client++) {
-        while (true) {
-            while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-                uintptr_t addr;
-                unsigned int len;
-                void *cookie;
-                uintptr_t phys;
-
-                err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
-                assert(!err);
-                phys = get_phys_addr(addr);
-                assert(phys);
-                err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
-                assert(!err);
-
-                enqueued += 1;
-            }
-
-            state.tx_ring_clients[client].used_ring->notify_reader = true;
-
-            THREAD_MEMORY_FENCE();
-
-            if (ring_empty(state.tx_ring_clients[client].used_ring) || ring_full(state.tx_ring_drv.used_ring)) break;
-
-            state.tx_ring_clients[client].used_ring->notify_reader = false;
-        }
     }
 
     if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
         state.tx_ring_drv.used_ring->notify_reader = false;
-        sel4cp_notify_delayed(DRIVER_RECV);
+        sel4cp_notify_delayed(DRIVER_SEND);
     }
 }
 
@@ -228,7 +222,9 @@ void init(void)
     ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, 1, NUM_BUFFERS, NUM_BUFFERS);
-    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_cli2, (ring_buffer_t *)tx_used_cli2, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring_clients[3], (ring_buffer_t *)tx_free_cli3, (ring_buffer_t *)tx_used_cli3, 1, NUM_BUFFERS, NUM_BUFFERS);    
+    ring_init(&state.tx_ring_clients[4], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Enqueue free transmit buffers to all clients. */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -237,15 +233,27 @@ void init(void)
         assert(!err);
     }
 
-    for (int i = 0; i < 16 - 1; i++) {
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
         uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
         assert(!err);
     }
 
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
-        uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
+        uintptr_t addr = shared_dma_vaddr_cli2 + (BUF_SIZE * i);
         int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_cli3 + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[3], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[4], addr, BUF_SIZE, NULL);
         assert(!err);
     }
 
@@ -254,6 +262,8 @@ void init(void)
     state.tx_ring_clients[0].used_ring->notify_reader = true;
     state.tx_ring_clients[1].used_ring->notify_reader = true;
     state.tx_ring_clients[2].used_ring->notify_reader = true;
+    state.tx_ring_clients[3].used_ring->notify_reader = true;
+    state.tx_ring_clients[4].used_ring->notify_reader = true;
     // state.tx_ring_drv.used_ring->notify_reader = true;
     state.tx_ring_drv.free_ring->notify_reader = true;
 

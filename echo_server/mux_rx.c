@@ -15,6 +15,10 @@ uintptr_t rx_free_cli0;
 uintptr_t rx_used_cli0;
 uintptr_t rx_free_cli1;
 uintptr_t rx_used_cli1;
+uintptr_t rx_free_cli2;
+uintptr_t rx_used_cli2;
+uintptr_t rx_free_cli3;
+uintptr_t rx_used_cli3;
 uintptr_t rx_free_arp;
 uintptr_t rx_used_arp;
 
@@ -22,9 +26,9 @@ uintptr_t shared_dma_vaddr;
 uintptr_t shared_dma_paddr;
 uintptr_t uart_base;
 
-#define NUM_CLIENTS 3
+#define NUM_CLIENTS 5
 #define DMA_SIZE 0x200000
-#define DRIVER_CH 3
+#define DRIVER_CH 5
 
 #define ETHER_MTU 1500
 
@@ -262,13 +266,27 @@ void init(void)
     state.mac_addrs[1][4] = 0;
     state.mac_addrs[1][5] = 0x1;
 
+    state.mac_addrs[2][0] = 0x52;
+    state.mac_addrs[2][1] = 0x54;
+    state.mac_addrs[2][2] = 0x1;
+    state.mac_addrs[2][3] = 0;
+    state.mac_addrs[2][4] = 0;
+    state.mac_addrs[2][5] = 0x2;
+
+    state.mac_addrs[3][0] = 0x52;
+    state.mac_addrs[3][1] = 0x54;
+    state.mac_addrs[3][2] = 0x1;
+    state.mac_addrs[3][3] = 0;
+    state.mac_addrs[3][4] = 0;
+    state.mac_addrs[3][5] = 0x3;
     // and for broadcast. 
-    state.mac_addrs[2][0] = 0xff;
-    state.mac_addrs[2][1] = 0xff;
-    state.mac_addrs[2][2] = 0xff;
-    state.mac_addrs[2][3] = 0xff;
-    state.mac_addrs[2][4] = 0xff;
-    state.mac_addrs[2][5] = 0xff;
+    state.mac_addrs[4][0] = 0xff;
+    state.mac_addrs[4][1] = 0xff;
+    state.mac_addrs[4][2] = 0xff;
+    state.mac_addrs[4][3] = 0xff;
+    state.mac_addrs[4][4] = 0xff;
+    state.mac_addrs[4][5] = 0xff;
+
     // This is the legitimate hw address for imx8mm
     // (can be useful when debugging). 
     /*state.mac_addrs[0][0] = 0;
@@ -283,7 +301,9 @@ void init(void)
 
     ring_init(&state.rx_ring_clients[0], (ring_buffer_t *)rx_free_cli0, (ring_buffer_t *)rx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
     ring_init(&state.rx_ring_clients[1], (ring_buffer_t *)rx_free_cli1, (ring_buffer_t *)rx_used_cli1, 1, NUM_BUFFERS, NUM_BUFFERS);
-    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.rx_ring_clients[2], (ring_buffer_t *)rx_free_cli2, (ring_buffer_t *)rx_used_cli2, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.rx_ring_clients[3], (ring_buffer_t *)rx_free_cli3, (ring_buffer_t *)rx_used_cli3, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.rx_ring_clients[4], (ring_buffer_t *)rx_free_arp, (ring_buffer_t *)rx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
     /* Enqueue free buffers for the driver to access */
     for (int i = 0; i < NUM_BUFFERS - 1; i++) {
@@ -296,6 +316,9 @@ void init(void)
     state.rx_ring_clients[0].used_ring->notify_reader = true;
     state.rx_ring_clients[1].used_ring->notify_reader = true;
     state.rx_ring_clients[2].used_ring->notify_reader = true;
+    state.rx_ring_clients[3].used_ring->notify_reader = true;
+    state.rx_ring_clients[4].used_ring->notify_reader = true;
+
     // Notify the driver that we are ready to receive
     sel4cp_notify(DRIVER_CH);
 

@@ -11,6 +11,10 @@
 #define PD_ETH2         9
 #define PD_COPY1        11
 #define PD_CLIENT1      10
+#define PD_COPY2        13
+#define PD_CLIENT2      12
+#define PD_COPY3        15
+#define PD_CLIENT3      14
 
 void print_pd_name(int pd_id) {
     switch (pd_id) {
@@ -24,6 +28,10 @@ void print_pd_name(int pd_id) {
         case PD_ETH2: print("ETH CLI DRIVER"); break;
         case PD_COPY1: print("COPY1"); break;
         case PD_CLIENT1: print("CLIENT1"); break;
+        case PD_COPY2: print("COPY2"); break;
+        case PD_CLIENT2: print("CLIENT2"); break;
+        case PD_COPY3: print("COPY3"); break;
+        case PD_CLIENT3: print("CLIENT3"); break;
         default: print("CORE TOTALS");
     }
 }

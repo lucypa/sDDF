@@ -104,9 +104,6 @@ irq(sel4cp_channel ch)
         if (ch != -1 && overflow_count == (next_timeout >> 32)) {
             pending_timeouts--;
             gpt[OCR1] = (uint32_t)next_timeout;
-            while (gpt[OCR1] != next_timeout) {
-                gpt[OCR1] = (uint32_t)next_timeout;
-            }
             gpt[IR] |= 1;
             timeout_active = true;
             current_timeout = next_timeout;
@@ -149,9 +146,6 @@ protected(sel4cp_channel ch, sel4cp_msginfo msginfo)
                     pending_timeouts++;
                 }
                 gpt[OCR1] = (uint32_t)abs_timeout;
-                while (gpt[OCR1] != abs_timeout) {
-                    gpt[OCR1] = (uint32_t)abs_timeout;
-                }
                 gpt[IR] |= 1;
                 timeout_active = true;
                 current_timeout = abs_timeout;

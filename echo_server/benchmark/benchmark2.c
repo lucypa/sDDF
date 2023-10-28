@@ -44,6 +44,10 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY2);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT2);
+    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_TIMER);
+    //seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_ETH2);
     seL4_BenchmarkResetLog();
 }
 
@@ -102,6 +106,18 @@ void notified(sel4cp_channel ch)
 
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
+
+            sel4cp_benchmark_stop_tcb(PD_TIMER, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_TIMER, kernel, entries, number_schedules, total);
+
+            //sel4cp_benchmark_stop_tcb(PD_ETH2, &total, &number_schedules, &kernel, &entries);
+            //print_benchmark_details(PD_ETH2, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_COPY2, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_COPY2, kernel, entries, number_schedules, total);
+
+            sel4cp_benchmark_stop_tcb(PD_CLIENT2, &total, &number_schedules, &kernel, &entries);
+            print_benchmark_details(PD_CLIENT2, kernel, entries, number_schedules, total);
             break;
         default:
             print("Bench thread notified on unexpected channel\n");

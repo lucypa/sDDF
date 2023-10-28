@@ -446,7 +446,7 @@ void init(void)
     rx_ring.used_ring->notify_reader = true;
     // check if we have any requests to transmit.
     handle_tx(eth);
-    //sel4cp_notify(ETH_CLI);
+    // sel4cp_notify(ETH_CLI);
 }
 
 void

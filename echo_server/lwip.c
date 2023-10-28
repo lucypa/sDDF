@@ -442,9 +442,14 @@ static void get_mac(void)
     state.mac[4] = 0;
     if (!strcmp(sel4cp_name, "client0")) {
         state.mac[5] = 0;
-    } else {
+    } else if (!strcmp(sel4cp_name, "client1")) {
         state.mac[5] = 0x1;
+    } else if (!strcmp(sel4cp_name, "client2")) {
+        state.mac[5] = 0x2;
+    } else {
+        state.mac[5] = 0x3;
     }
+
     /* sel4cp_ppcall(RX_CH, sel4cp_msginfo_new(0, 0));
     uint32_t palr = sel4cp_mr_get(0);
     uint32_t paur = sel4cp_mr_get(1);
@@ -578,7 +583,7 @@ void notified(sel4cp_channel ch)
         }
     }
 
-    if (notify_tx && state.tx_ring.used_ring->notify_reader) {
+    if (notify_tx) {
         state.tx_ring.used_ring->notify_reader = false;
         notify_tx = false;
         if (!have_signal) {

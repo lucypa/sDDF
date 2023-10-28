@@ -19,7 +19,7 @@
 #include "echo.h"
 #include "util.h"
 
-#define NUM_LOOPS 10
+#define NUM_LOOPS 100
 #define UDP_ECHO_PORT 1235
 uintptr_t data;
 static struct udp_pcb *udp_socket;
@@ -74,6 +74,10 @@ calculate_checksum(struct pbuf *p)
 
 static void lwip_udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
+    for (int i = 0;  i < NUM_LOOPS; i++) {
+        calculate_checksum(p);
+    }
+
     err_t error = udp_sendto(pcb, p, addr, port);
     if (error) {
         print("Failed to send UDP packet through socket: ");
