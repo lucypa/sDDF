@@ -17,4 +17,6 @@
 
 int setup_udp_socket(void);
 int setup_utilization_socket(void);
+int setup_udp_send_socket(void);
+void continue_send(void);
 
