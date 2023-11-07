@@ -23,7 +23,7 @@
 
 #define START_PMU 4
 #define STOP_PMU 5
-#define NUM_CORES 4
+#define NUM_CORES 1
 
 /* This file implements a TCP based utilization measurment process that starts
  * and stops utilization measurements based on a client's requests.

@@ -3,21 +3,29 @@
 
 uintptr_t tx_free_drv;
 uintptr_t tx_used_drv;
-uintptr_t tx_free_cli;
-uintptr_t tx_used_cli;
+uintptr_t tx_free_cli0;
+uintptr_t tx_used_cli0;
+uintptr_t tx_free_cli1;
+uintptr_t tx_used_cli1;
 uintptr_t tx_free_arp;
 uintptr_t tx_used_arp;
 
-uintptr_t shared_dma_vaddr_cli;
-uintptr_t shared_dma_paddr_cli;
+uintptr_t shared_dma_vaddr_cli0;
+uintptr_t shared_dma_paddr_cli0;
+uintptr_t shared_dma_vaddr_cli1;
+uintptr_t shared_dma_paddr_cli1;
 uintptr_t shared_dma_vaddr_arp;
 uintptr_t shared_dma_paddr_arp;
 uintptr_t uart_base;
 
-#define CLIENT_CH 0
-#define ARP 1
-#define NUM_CLIENTS 2
-#define DRIVER_CH 2
+#define CLIENT_0 0
+#define CLIENT_1 1
+#define ARP 2
+#define NUM_CLIENTS 3
+#define DRIVER_SEND 5
+#define DRIVER_RECV 5
+#define NUM_BUFFERS 512
+#define BUF_SIZE 2048
 #define DMA_SIZE 0x200000
 
 typedef struct state {
@@ -34,9 +42,12 @@ get_phys_addr(uintptr_t virtual)
 {
     int offset;
     uintptr_t base;
-    if (virtual >= shared_dma_vaddr_cli && virtual < shared_dma_vaddr_cli + DMA_SIZE) {
-        offset = virtual - shared_dma_vaddr_cli;
-        base = shared_dma_paddr_cli;
+    if (virtual >= shared_dma_vaddr_cli0 && virtual < shared_dma_vaddr_cli0 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli0;
+        base = shared_dma_paddr_cli0;
+    } else if (virtual >= shared_dma_vaddr_cli1 && virtual < shared_dma_vaddr_cli1 + DMA_SIZE) {
+        offset = virtual - shared_dma_vaddr_cli1;
+        base = shared_dma_paddr_cli1;
     } else if (virtual >= shared_dma_vaddr_arp && virtual < shared_dma_vaddr_arp + DMA_SIZE) {
         offset = virtual - shared_dma_vaddr_arp;
         base = shared_dma_paddr_arp;
@@ -53,9 +64,12 @@ get_virt_addr(uintptr_t phys)
 {
     int offset;
     uintptr_t base; 
-    if (phys >= shared_dma_paddr_cli && phys < shared_dma_paddr_cli + DMA_SIZE) {
-        offset = phys - shared_dma_paddr_cli;
-        base = shared_dma_vaddr_cli;
+    if (phys >= shared_dma_paddr_cli0 && phys < shared_dma_paddr_cli0 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli0;
+        base = shared_dma_vaddr_cli0;
+    } else if (phys >= shared_dma_paddr_cli1 && phys < shared_dma_paddr_cli1 + DMA_SIZE) {
+        offset = phys - shared_dma_paddr_cli1;
+        base = shared_dma_vaddr_cli1;
     } else if (phys >= shared_dma_paddr_arp && phys < shared_dma_paddr_arp + DMA_SIZE) {
         offset = phys - shared_dma_paddr_arp;
         base = shared_dma_vaddr_arp;
@@ -70,9 +84,11 @@ get_virt_addr(uintptr_t phys)
 static int
 get_client(uintptr_t addr)
 {
-    if (addr >= shared_dma_vaddr_cli && addr < shared_dma_vaddr_cli + DMA_SIZE) {
-        return CLIENT_CH;
-    } else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
+    if (addr >= shared_dma_vaddr_cli0 && addr < shared_dma_vaddr_cli0 + DMA_SIZE) {
+        return CLIENT_0;
+    } else if (addr >= shared_dma_vaddr_cli1 && addr < shared_dma_vaddr_cli1 + DMA_SIZE) {
+        return CLIENT_1; 
+    }else if (addr >= shared_dma_vaddr_arp && addr < shared_dma_vaddr_arp + DMA_SIZE) {
         return ARP;
     }
     print("MUX TX|ERROR: Buffer out of range\n");
@@ -84,10 +100,10 @@ get_client(uintptr_t addr)
  */
 void process_tx_ready(void)
 {
-    uint64_t original_size = ring_size(state.tx_ring_drv.used_ring);
     uint64_t enqueued = 0;
-    int client;
+    uint64_t old_enqueued = enqueued;
     int err;
+    int client;
 
     /* 
      * Loop through clients in their priority ordering.
@@ -99,28 +115,38 @@ void process_tx_ready(void)
      * priority component might end up taking precendence
      * which we don't want.
      */
-    for (int prio = 0; prio < NUM_CLIENTS && !ring_full(state.tx_ring_drv.used_ring); prio++) {
-        client = state.client_priority_order[prio];
-        // Process all queued packets for this client. 
-        while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
-            uintptr_t addr;
-            unsigned int len;
-            void *cookie;
-            uintptr_t phys;
+    while(!ring_full(state.tx_ring_drv.used_ring)) {
+        old_enqueued = enqueued;
 
-            err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
-            assert(!err);
-            phys = get_phys_addr(addr);
-            assert(phys);
-            err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
-            assert(!err);
+        for (int prio = 0; prio < NUM_CLIENTS && !ring_full(state.tx_ring_drv.used_ring); prio++) {
+            client = state.client_priority_order[prio];
+            // Process all queued packets for this client. 
+            while (!ring_empty(state.tx_ring_clients[client].used_ring) && !ring_full(state.tx_ring_drv.used_ring)) {
+                uintptr_t addr;
+                unsigned int len;
+                void *cookie;
+                uintptr_t phys;
 
-            enqueued += 1;
+                err = dequeue_used(&state.tx_ring_clients[client], &addr, &len, &cookie);
+                assert(!err);
+                phys = get_phys_addr(addr);
+                assert(phys);
+                err = enqueue_used(&state.tx_ring_drv, phys, len, cookie);
+                assert(!err);
+
+                enqueued += 1;
+            }
+
+            state.tx_ring_clients[client].used_ring->notify_reader = true;
         }
+
+        // we haven't processed any packets since last loop, exit.
+        if (old_enqueued == enqueued) break;
     }
 
-    if ((original_size == 0 || original_size + enqueued != ring_size(state.tx_ring_drv.used_ring)) && enqueued != 0) {
-        sel4cp_notify_delayed(DRIVER_CH);
+    if (state.tx_ring_drv.used_ring->notify_reader && enqueued) {
+        state.tx_ring_drv.used_ring->notify_reader = false;
+        sel4cp_notify_delayed(DRIVER_SEND);
     }
 }
 
@@ -133,30 +159,38 @@ void process_tx_complete(void)
 {
     // bitmap stores whether which clients need notifying.
     bool notify_clients[NUM_CLIENTS] = {false};
+    while (true) {
+        while (!ring_empty(state.tx_ring_drv.free_ring)) {
+            uintptr_t addr;
+            unsigned int len;
+            void *cookie;
+            int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
+            assert(!err);
+            uintptr_t virt = get_virt_addr(addr);
+            assert(virt);
 
-    while (!ring_empty(state.tx_ring_drv.free_ring)) {
-        uintptr_t addr;
-        unsigned int len;
-        void *cookie;
-        int err = dequeue_free(&state.tx_ring_drv, &addr, &len, &cookie);
-        assert(!err);
-        uintptr_t virt = get_virt_addr(addr);
-        assert(virt);
+            int client = get_client(virt);
+            err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
+            assert(!err);
 
-        int client = get_client(virt);
-        int was_empty = ring_empty(state.tx_ring_clients[client].free_ring);
-
-        err = enqueue_free(&state.tx_ring_clients[client], virt, len, cookie);
-        assert(!err);
-
-        if (was_empty) {
-            notify_clients[client] = true;
+            if (state.tx_ring_clients[client].free_ring->notify_reader) {
+                notify_clients[client] = true;
+            }
         }
+
+        state.tx_ring_drv.free_ring->notify_reader = true;
+
+        THREAD_MEMORY_FENCE();
+
+        if (ring_empty(state.tx_ring_drv.free_ring)) break;
+
+        state.tx_ring_drv.free_ring->notify_reader = false;
     }
 
     /* Loop over bitmap and see who we need to notify. */
     for (int client = 0; client < NUM_CLIENTS; client++) {
         if (notify_clients[client]) {
+            state.tx_ring_clients[client].free_ring->notify_reader = false;
             sel4cp_notify(client);
         }
     }
@@ -164,32 +198,49 @@ void process_tx_complete(void)
 
 void notified(sel4cp_channel ch)
 {
-    if (ch == CLIENT_CH || ch == ARP || ch == DRIVER_CH ) {
-        process_tx_complete();
-        process_tx_ready();
-    } else {
-       print("MUX TX|ERROR: unexpected notification from channel: ");
-       puthex64(ch);
-       print("\n");
-       assert(0);
-    }
+    process_tx_complete();
+    process_tx_ready();
 }
+
 
 void init(void)
 {
     /* Set up shared memory regions */
-    // FIX ME: Use the notify function pointer to put the notification in?
-    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1);
-    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli, (ring_buffer_t *)tx_used_cli, 0);
-    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 0);
+    ring_init(&state.tx_ring_drv, (ring_buffer_t *)tx_free_drv, (ring_buffer_t *)tx_used_drv, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring_clients[0], (ring_buffer_t *)tx_free_cli0, (ring_buffer_t *)tx_used_cli0, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring_clients[1], (ring_buffer_t *)tx_free_cli1, (ring_buffer_t *)tx_used_cli1, 1, NUM_BUFFERS, NUM_BUFFERS);
+    ring_init(&state.tx_ring_clients[2], (ring_buffer_t *)tx_free_arp, (ring_buffer_t *)tx_used_arp, 1, NUM_BUFFERS, NUM_BUFFERS);
 
-    /* Set up the map of client ids in order of their priority. 
-     * Ie client_priority_order[0] is the id of the client with highest priority. 
-     */
-    state.client_priority_order[0] = CLIENT_CH;
-    state.client_priority_order[1] = ARP;
-    
-    print("MUX: initialised\n");
+    /* Enqueue free transmit buffers to all clients. */
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_cli0 + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[0], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_cli1 + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[1], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    for (int i = 0; i < NUM_BUFFERS - 1; i++) {
+        uintptr_t addr = shared_dma_vaddr_arp + (BUF_SIZE * i);
+        int err = enqueue_free(&state.tx_ring_clients[2], addr, BUF_SIZE, NULL);
+        assert(!err);
+    }
+
+    // We are higher priority than the clients, so we always need to be notified
+    // when a used buffer becomes available to be sent. 
+    state.tx_ring_clients[0].used_ring->notify_reader = true;
+    state.tx_ring_clients[1].used_ring->notify_reader = true;
+    state.tx_ring_clients[2].used_ring->notify_reader = true;
+    // state.tx_ring_drv.used_ring->notify_reader = true;
+    state.tx_ring_drv.free_ring->notify_reader = true;
+
+    state.client_priority_order[0] = CLIENT_0;
+    state.client_priority_order[1] = CLIENT_1;
+    state.client_priority_order[2] = ARP;
 
     return;
 }

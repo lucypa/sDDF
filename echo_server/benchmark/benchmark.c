@@ -64,9 +64,6 @@ static void
 sel4cp_benchmark_start(void)
 {
     seL4_BenchmarkResetThreadUtilisation(TCB_CAP);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_MUX_RX);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_COPY3);
-    seL4_BenchmarkResetThreadUtilisation(BASE_TCB_CAP + PD_CLIENT3);
     seL4_BenchmarkResetLog();
 }
 
@@ -214,15 +211,6 @@ void notified(sel4cp_channel ch)
             uint64_t number_schedules;
             sel4cp_benchmark_stop(&total, &idle, &kernel, &entries);
             print_benchmark_details(TCB_CAP, kernel, entries, idle, total);
-
-            sel4cp_benchmark_stop_tcb(PD_MUX_TX, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_MUX_TX, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_COPY3, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_COPY3, kernel, entries, number_schedules, total);
-
-            sel4cp_benchmark_stop_tcb(PD_CLIENT3, &total, &number_schedules, &kernel, &entries);
-            print_benchmark_details(PD_CLIENT3, kernel, entries, number_schedules, total);
 
             #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
             entries = seL4_BenchmarkFinalizeLog();

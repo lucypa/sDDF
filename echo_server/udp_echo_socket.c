@@ -19,7 +19,7 @@
 #include "echo.h"
 #include "util.h"
 
-#define NUM_LOOPS 100
+#define NUM_LOOPS 10
 #define UDP_ECHO_PORT 1235
 uintptr_t data;
 static struct udp_pcb *udp_socket;
