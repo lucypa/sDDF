@@ -1,7 +1,7 @@
 #include "timer.h"
 
 #define TIMER_CH 1 
-#define LWIP_TICK_MS 100
+#define LWIP_TICK_MS 1000
 #define US_IN_MS 1000ULL
 #define NS_IN_US 1000ULL
 

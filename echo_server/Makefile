@@ -99,7 +99,7 @@ LWIP_OBJS := $(LWIPFILES:.c=.o) lwip.o libsharedringbuffer/shared_ringbuffer.o u
 ETH_OBJS := eth.o libsharedringbuffer/shared_ringbuffer.o
 ETH2_OBJS := eth2.o libsharedringbuffer/shared_ringbuffer.o
 MUX_RX_OBJS := mux_rx.o libsharedringbuffer/shared_ringbuffer.o
-MUX_TX_OBJS := mux_tx_priority.o libsharedringbuffer/shared_ringbuffer.o
+MUX_TX_OBJS := mux_tx.o libsharedringbuffer/shared_ringbuffer.o
 COPY_OBJS := copy.o libsharedringbuffer/shared_ringbuffer.o
 BENCH_OBJS := benchmark/benchmark.o
 IDLE_OBJS := benchmark/idle.o
