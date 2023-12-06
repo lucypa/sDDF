@@ -312,7 +312,7 @@ process_tx_queue(void)
                 copied += curr->len;
             }
 
-            // cleanCache(frame, frame + copied);
+            //cleanCache(frame, frame + copied);
 
             /* insert into the used tx queue */
             err = enqueue_used(&(state.tx_ring), buffer, copied, NULL);

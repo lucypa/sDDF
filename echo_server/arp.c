@@ -48,7 +48,7 @@ struct __attribute__((__packed__)) arp_packet {
     uint8_t hwdst_addr[ETH_HWADDR_LEN];
     uint32_t ipdst_addr;
     uint8_t padding[10];
-    uint32_t crc;
+    uint32_t checksum;
 };
 
 static char *
@@ -141,8 +141,8 @@ arp_reply(const uint8_t ethsrc_addr[ETH_HWADDR_LEN],
 
     // then padding of 10 bytes
     memset(&reply->padding, 0, 10);
-    // then CRC (size of the arp packet (28B) + ethernet header (14B))
-    // reply->crc = inet_chksum(reply, 42);
+    // then checksum (size of the arp packet (28B) + ethernet header (14B))
+    reply->checksum = inet_chksum(reply, 42);
 
     // clean cache
     cleanCache((uintptr_t)reply, (uintptr_t)reply + 64);
