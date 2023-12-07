@@ -46,3 +46,14 @@ Checks to make before benchmarking:
 
 ### iMX8MM-EVK
 
+## dev
+
+This branch is configured for 2 client applications, which have a utilisation socket (for benchmarking), a udp echo socket, and a udp send socket (which is currently configured to send 10,000 udp packets for every packet received - mimicking a webserver perhaps). 
+To add additional clients, you need to change the hardcoded MAC addresses and dma addresses
+inside both multiplexers. 
+
+### Multiplexers
+
+There are 4 different transmit multiplexers here, each implementing a different policy. 
+The mux_tx just simply loops around in client order, processing as many packets as it can for each invocation. For a single core set up with clients running at lower priority than the multiplexer, it does not make sense to use a round-robin or priority-based policy here as the multiplexer will be invoked as soon as a client signals it. Use the round-robin/priority-based multiplexers in a multi-core set up. My thesis has detailed design and evaluations for what you can expect with each of these implementations. 
+

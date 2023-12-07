@@ -106,6 +106,8 @@ static void update_ring_slot(
     d->stat = stat;
 }
 
+/* Set the IRQ mask on the device to trigger interrupts for various events. 
+    See the reference manual for the events */
 static inline void
 enable_irqs(volatile struct enet_regs *eth, uint32_t mask)
 {
@@ -168,6 +170,7 @@ fill_rx_bufs(void)
     }
 }
 
+/* An IRQ has been triggered, a packet has likely come in. */
 static void
 handle_rx(volatile struct enet_regs *eth)
 {
@@ -231,6 +234,8 @@ handle_rx(volatile struct enet_regs *eth)
     }
 }
 
+/* Enqueue a transmit buffer to the hardware rings and set the 
+    status to trigger transmit */
 static void
 raw_tx(volatile struct enet_regs *eth, uintptr_t phys,
                   unsigned int len, void *cookie)
@@ -279,6 +284,7 @@ handle_tx(volatile struct enet_regs *eth)
     }
 }
 
+/* An IRQ has been triggered, a packet has likely been sent so we can now reuse the buffers */
 static void
 complete_tx(volatile struct enet_regs *eth)
 {
@@ -344,9 +350,6 @@ static void
 eth_setup(void)
 {
     get_mac_addr(eth, mac);
-    sel4cp_dbg_puts("MAC: ");
-    // dump_mac(mac);
-    sel4cp_dbg_puts("\n");
 
     /* set up descriptor rings */
     rx.cnt = RX_COUNT;
@@ -390,7 +393,7 @@ eth_setup(void)
     eth->galr = 0;
 
     if (eth->palr == 0) {
-        // the mac address needs setting again.
+        // the mac address needs setting again. This is common after a software rst. 
         set_mac(eth, mac);
     }
 
@@ -399,23 +402,38 @@ eth_setup(void)
     /* coalesce transmit IRQs to batches of 128 */
     eth->txic0 = ICEN | ICFT(128) | 0xFF;
     eth->tipg = TIPG;
-    /* Transmit FIFO Watermark register - store and forward */
+    /* Transmit FIFO Watermark register - store and forward. We need this so the device can
+        do the transmit checksums. If the device you use is not capable of this, you 
+        need to configure lwIP to insert these instead (see lwipopts.h). */
     eth->tfwr = STRFWD;
     /* clear rx store and forward. This must be done for hardware csums*/
     eth->rsfl = 0;
     /* Do not forward frames with errors + check the csum */
     eth->racc = RACC_LINEDIS | RACC_IPDIS | RACC_PRODIS;
-    /* add the checksum for known IP protocols */
+    /* add the checksum for known IP protocols on transmit packets. This saves the network stack from
+        having to do it which saves CPU cycles. */
     eth->tacc = TACC_PROCHK | TACC_IPCHK;
 
-    /* Set RDSR */
+    /* Set RDSR/TDSR with the physical address of the hardware rings we will share with the device. */
     eth->rdsr = hw_ring_buffer_paddr;
     eth->tdsr = hw_ring_buffer_paddr + (sizeof(struct descriptor) * RX_COUNT);
 
-    /* Size of max eth packet size */
+    /* Size of max eth packet size - use ethernet MTU for this. */
     eth->mrbr = MAX_PACKET_SIZE;
 
+    /* 
+        RCR: Receive control register. 
+        We need to set promiscuous mode so the device receives all incoming packets and doesn't
+        automatically discard packets with a different MAC address. We need this because we 
+        multiplex with virtual MAC addresses, but this is not required if you multiplex at 
+        higher layers. Switches generally learn which MAC addresses correspond to 
+        which devices so it is unlikely you will receive excesss traffic not meant for this system. 
+        
+        Need to enable RGMII to run at 1000Mbps. 
+        */
     eth->rcr = RCR_MAX_FL(1518) | RCR_RGMII_EN | RCR_MII_MODE | RCR_PROMISCUOUS;
+
+    /* FDEN: Full-duplex enable. */
     eth->tcr = TCR_FDEN;
 
     /* set speed */
@@ -424,11 +442,15 @@ eth_setup(void)
     /* Set Enable  in ECR */
     eth->ecr |= ECR_ETHEREN;
 
+    /* enable receive */
     eth->rdar = RDAR_RDAR;
 
-    /* enable events */
+    /* enable events so we get interrupts */
     eth->eir = eth->eir;
     eth->eimr = IRQ_MASK;
+
+    /* We are ready to go! Just need a notification from the RX MUX that free buffers are available
+        so we can enqueue them into the hw rings and enable receiving. */
 }
 
 void init(void)
