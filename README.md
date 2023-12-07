@@ -46,3 +46,21 @@ Checks to make before benchmarking:
 
 ### iMX8MM-EVK
 
+## dev-multicore
+
+This branch is configured for a multicore set up. Currently the eth.system file is
+set up with the following core allocations:
+
+* Core 0: ethernet driver, transmit multiplexer
+* Core 1: receive multiplexer, ARP, copy component, client, timer driver. 
+* Core 2: - 
+* Core 3: -
+
+Each core has it's own benchmarking PD and idle thread. The benchmarking PD makes 
+benchmark utilisation system calls to gather cycle counts for each PD. The kernel stores
+this information locally on the core the PD is running on, so the benchmarking PD for that core has to be set up with the PD ids for that particular core. If you change the core 
+allocation in the .system file, you should also check the benchmark_.c threads have the correct allocation or you will get garbage data.
+
+This branch also contains the split driver design, which is currently not configured but can
+be easily set up by uncommenting the entry in the system file. You also need to check the multiplexer communicates with the correct driver by changing the `#define DRIVER_SEND` to
+the appropriate channel id for the eth2 PD. Note that my thesis research did not find this design to be feasible. 
