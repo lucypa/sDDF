@@ -46,3 +46,14 @@ Checks to make before benchmarking:
 
 ### iMX8MM-EVK
 
+## Log buffer
+
+This branch is set up with an additional component, logger.c. 
+All components share a page with the logger, and on each invocation, log what the queue
+sizes are and how many packets they processed. The logger will get a time out (currently commented out) 
+and can then dump all the information in the shared queues. This is useful when the system appears
+unresponsive under benchmarking conditions, and you suspect deadlock or livelock. The data for each
+component is dumped with
+a cycle count, which can be used to order each log entry in sequential order. 
+
+
