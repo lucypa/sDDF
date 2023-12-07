@@ -48,6 +48,7 @@ Checks to make before benchmarking:
 
 ## Tx Copy
 
-This branch is configured for a single client, client0 and the ARP component. The client has an additional copy
+This branch is configured for a single client: client0 and the ARP component. The client has an additional copy
 component on the TX path as well to reduce the trust placed on the client. 
 Note that this system was only tested with one client, but uses the same code for a multiple client set up, hence there are two small hacks inside the multiplexers to avoid the unused second client. 
+The tx_copy.c should can be used for multiple clients.
